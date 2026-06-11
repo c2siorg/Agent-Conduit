@@ -1,0 +1,38 @@
+{
+  "name": "agent-conduit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent Conduit — a self-hosted, unified gateway for the agentic web (identity, credentials, tool schemas, audit).",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20 <21",
+    "npm": ">=10"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "typecheck": "tsc --build --force",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "node --import tsx --test test/unit/*.test.ts test/integration/*.test.ts",
+    "dev": "npm run dev -w @conduit/server",
+    "dev:dashboard": "npm run dev -w @conduit/dashboard",
+    "migrate": "npm run migrate -w @conduit/server",
+    "docker:up": "docker compose up",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "eslint": "^9.7.0",
+    "fast-check": "^3.19.0",
+    "prettier": "^3.3.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}

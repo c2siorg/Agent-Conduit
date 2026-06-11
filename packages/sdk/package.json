@@ -1,0 +1,23 @@
+{
+  "name": "conduit-client",
+  "version": "0.1.0",
+  "description": "Agent Conduit SDK — the AAP Client: holds the host identity, manages keys, signs JWTs, calls the gateway.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean"
+  },
+  "dependencies": {
+    "@conduit/core": "*",
+    "@conduit/crypto": "*"
+  }
+}

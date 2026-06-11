@@ -1,0 +1,68 @@
+# Agent Conduit — OpenAPI (living doc).
+# Keep this in sync when adding/changing endpoints (per CLAUDE.md). Skeleton only — fill as routes land.
+openapi: 3.1.0
+info:
+  title: Agent Conduit Gateway API
+  version: 0.1.0
+  description: >
+    Self-hosted unified agent gateway. Identity (AAP), Connection Registry, Token Router, Observability.
+    Agent/host JWTs are EdDSA (Ed25519). Error responses use the AAP envelope { error, message, … }.
+servers:
+  - url: https://localhost:8443
+components:
+  securitySchemes:
+    agentJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: agent+jwt
+    hostJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: host+jwt
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string, description: snake_case AAP error code }
+        message: { type: string }
+        violations: { type: array, items: { type: object } }
+paths:
+  /.well-known/agent-configuration:
+    get:
+      summary: Discovery document (AAP §5.1)
+      responses:
+        '200': { description: Provider configuration }
+  /.well-known/jwks.json:
+    get:
+      summary: Server signing keys (JWKS)
+      responses:
+        '200': { description: JWK Set }
+  /agent/register:
+    post:
+      summary: Register an agent under a host (AAP §5.3)
+      security: [{ hostJwt: [] }]
+      responses:
+        '200': { description: Registered (may include pending grants) }
+        '409': { description: agent_exists }
+  /capability/execute:
+    post:
+      summary: Execute a granted capability (AAP §5.11)
+      security: [{ agentJwt: [] }]
+      responses:
+        '200': { description: Sync result }
+        '202': { description: Async accepted (status_url) }
+        '403':
+          description: constraint_violated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  /tools/{name}:
+    get:
+      summary: Identity-scoped tool schema (Token Router)
+      security: [{ agentJwt: [] }]
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Canonical schema }
+        '403': { description: capability_not_granted — schema NOT exposed }
