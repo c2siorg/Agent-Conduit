@@ -1,0 +1,38 @@
+/* Conduit design tokens — dark, data-dense security-console aesthetic.
+   Reconcile with docs/design/DESIGN.md + docs/design/mockups before final UI work.
+   Restrained accent, monospaced numerals for metrics/identifiers, no generic AI gradients. */
+:root {
+  /* Surfaces */
+  --color-bg: #0b0f14;
+  --color-surface: #121822;
+  --color-surface-raised: #18202b;
+  --color-border: #232c38;
+
+  /* Text */
+  --color-text: #e6edf3;
+  --color-text-muted: #8b97a7;
+
+  /* Accent (restrained — status + primary actions only) */
+  --color-accent: #3fb6a8;
+  --color-accent-hover: #4fd0c0;
+
+  /* Status pills */
+  --color-status-active: #3fb950;
+  --color-status-pending: #d29922;
+  --color-status-revoked: #f85149;
+  --color-status-claimed: #a371f7;
+
+  /* Typography — avoid Inter/Roboto defaults; mono for numerals/identifiers */
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Code', monospace;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius: 6px;
+}

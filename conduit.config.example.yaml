@@ -1,0 +1,88 @@
+# Agent Conduit — DOCUMENTED example configuration.
+#
+# This is a teaching copy: every key is annotated. Start from `conduit.config.yaml`
+# for real deployments and override individual keys with environment variables.
+#
+# Layered resolution (last wins): built-in defaults → YAML file → env vars.
+# Secrets are NEVER read from YAML — only from env / a secret store.
+
+server:
+  host: 0.0.0.0 # bind address
+  port: 8443 # listen port
+  baseUrl: https://localhost:8443 # public issuer/base URL — MUST be HTTPS in prod
+  requestLimits:
+    jsonBodyBytes: 1048576 # max JSON body (bytes) — mitigates resource exhaustion
+    maxHeaderBytes: 16384 # max header size (bytes)
+
+storage:
+  # HOW TO RUN MYSQL INSTEAD OF POSTGRES: set driver: mysql, fill the mysql block,
+  # run that backend's migrations (`npm run migrate`). No application code changes.
+  driver: postgres # postgres (default/reference) | mysql | <custom>
+  postgres:
+    host: localhost
+    port: 5432
+    database: conduit
+    user: conduit
+    poolSize: 10 # connection pool size
+    ssl: false # enable for managed Postgres
+  mysql:
+    host: localhost
+    port: 3306
+    database: conduit
+    user: conduit
+    poolSize: 10
+
+crypto:
+  # Key SOURCES are configured here; key MATERIAL comes from env / file / KMS.
+  masterKey:
+    source: env # env | file | kms
+    envVar: CONDUIT_MASTER_KEY # used when source = env
+    # filePath: /run/secrets/master.key  # used when source = file
+    # kmsKeyId: ...                       # used when source = kms
+  signingKey:
+    source: env
+    envVar: CONDUIT_SIGNING_KEY
+
+security:
+  jwt:
+    agentTtlSeconds: 60 # agent JWT lifetime (short-lived by design)
+    hostTtlSeconds: 300 # host JWT lifetime
+    clockSkewSeconds: 30 # tolerance; reject iat further in the future than this
+    jtiCacheWindowSeconds: 90 # replay-cache retention = agentTtl + clockSkew
+  rateLimits:
+    perAgentPerMinute: 120
+    perHostPerMinute: 300
+    perUserPerMinute: 300
+    perIpPerMinute: 600
+    unknownHostRegistrationPerHourPerIp: 5 # anti-abuse registration cap
+  dpop:
+    enabled: false # RFC 9449 sender-constrained tokens — high-security opt-in
+  mtls:
+    enabled: false # RFC 8705 mutual TLS — high-security opt-in
+    # caBundlePath: ./secrets/tls/clients-ca.pem
+
+tls:
+  source: file # file | acme
+  file:
+    certPath: ./secrets/tls/cert.pem
+    keyPath: ./secrets/tls/key.pem
+  acme:
+    directoryUrl: https://acme-v02.api.letsencrypt.org/directory
+    email: ops@example.com
+    domains:
+      - conduit.example.com
+  expiryAlertDays: 21
+
+connectors:
+  enabled: [slack, github, rest] # only enable what you use
+  defaults:
+    rest:
+      timeoutMs: 5000 # per-connection default the driver may read
+
+observability:
+  logLevel: info
+  format: ndjson # structured NDJSON for log shippers
+  exporters: [loki] # forward to Datadog / Loki / CloudWatch
+  audit:
+    hashArgs: true # raw args are never persisted — only a stable hash
+    retentionDays: 365 # data-retention policy (AAP §9)

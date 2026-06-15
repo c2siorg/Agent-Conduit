@@ -1,0 +1,79 @@
+# Dependencies
+node_modules/
+.pnp.*
+.yarn/*
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+apps/dashboard/dist/
+
+# Vite / dashboard caches
+.vite/
+*.timestamp-*.mjs
+
+# Secrets & local env - NEVER commit (see CLAUDE.md security rules)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+secrets/
+conduit.config.local.yaml
+conduit.config.local.*
+
+# Test & coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# Database / local runtime state
+*.sqlite
+*.sqlite3
+pgdata/
+
+# Scratch / temp files
+*.tmp
+.tmp-*
+.tmp/
+tmp/
+*.tgz
+
+# Editor / OS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+ehthumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.history/
+*.swp
+*.swo
+*~
+
+# Misc caches
+.cache/
+
+# Intentionally COMMITTED (shared project config - do NOT ignore these):
+#   .nvmrc  .editorconfig  .npmrc (engine-strict only, no secrets)
+#   package-lock.json  conduit.config.yaml  conduit.config.example.yaml  .env.example

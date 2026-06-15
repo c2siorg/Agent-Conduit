@@ -1,0 +1,14 @@
+{
+  "//": "Root solution file — TypeScript project references wire the monorepo build graph (build order is inferred).",
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/crypto" },
+    { "path": "packages/storage" },
+    { "path": "packages/connectors" },
+    { "path": "packages/adapters" },
+    { "path": "packages/sdk" },
+    { "path": "packages/cli" },
+    { "path": "apps/server" }
+  ]
+}

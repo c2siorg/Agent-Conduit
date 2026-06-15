@@ -1,0 +1,19 @@
+{
+  "name": "@conduit/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Conduit admin CLI — register connections, manage agents/hosts, run migrations, inspect audit logs.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "conduit": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean"
+  },
+  "dependencies": {
+    "@conduit/core": "*"
+  }
+}

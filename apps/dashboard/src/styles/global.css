@@ -1,0 +1,117 @@
+/* Global layout for the operator console. Themed entirely via CSS variables (tokens.css). */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+
+/* Monospaced numerals/identifiers for a precise operator feel. */
+.mono,
+.metric,
+.identifier {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shell: persistent sidebar + content. */
+.appShell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  padding: var(--space-4);
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-bottom: var(--space-6);
+}
+.brandSub {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.navItem:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+.navItemActive {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.content {
+  padding: var(--space-8);
+}
+.view h1 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 var(--space-4);
+}
+.muted {
+  color: var(--color-text-muted);
+}
+
+/* Status pills. */
+.pill {
+  display: inline-block;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pillActive {
+  color: var(--color-status-active);
+  background: color-mix(in srgb, var(--color-status-active) 16%, transparent);
+}
+.pillPending {
+  color: var(--color-status-pending);
+  background: color-mix(in srgb, var(--color-status-pending) 16%, transparent);
+}
+.pillRevoked {
+  color: var(--color-status-revoked);
+  background: color-mix(in srgb, var(--color-status-revoked) 16%, transparent);
+}
+.pillClaimed {
+  color: var(--color-status-claimed);
+  background: color-mix(in srgb, var(--color-status-claimed) 16%, transparent);
+}
+
+.sparkline {
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+  letter-spacing: 1px;
+}
