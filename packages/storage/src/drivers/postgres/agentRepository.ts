@@ -1,10 +1,11 @@
 import type { Agent, AgentState } from '@conduit/core';
+import type { Page, PageQuery } from '../../pagination.js';
 import type { AgentLifetimes, AgentRepository, NewAgent } from '../../repositories.js';
 import type { Queryable } from './queryable.js';
-import { mapAgentRow, type AgentRow } from './rowMappers.js';
+import { clampLimit, decodeCursor, encodeCursor, mapAgentRow, type AgentRow } from './rowMappers.js';
 
 const COLS =
-  'id, host_id, public_key_jwk, jwks_url, status, mode, activated_at, ' +
+  'id, host_id, public_key_jwk, jwks_url, name, description, status, mode, activated_at, ' +
   'session_expires_at, max_lifetime_expires_at, absolute_expires_at, created_at, updated_at';
 
 /** Postgres-backed {@link AgentRepository}. */
@@ -13,13 +14,15 @@ export class PostgresAgentRepository implements AgentRepository {
 
   async create(input: NewAgent): Promise<Agent> {
     const { rows } = await this.db().query<AgentRow>(
-      `INSERT INTO agents (host_id, public_key_jwk, jwks_url, mode, status)
-       VALUES ($1::uuid, $2::jsonb, $3, $4::agent_mode, $5::agent_state)
+      `INSERT INTO agents (host_id, public_key_jwk, jwks_url, name, description, mode, status)
+       VALUES ($1::uuid, $2::jsonb, $3, $4, $5, $6::agent_mode, $7::agent_state)
        RETURNING ${COLS}`,
       [
         input.hostId,
         input.publicKeyJwk ? JSON.stringify(input.publicKeyJwk) : null,
         input.jwksUrl,
+        input.name,
+        input.description,
         input.mode,
         input.status,
       ],
@@ -49,10 +52,48 @@ export class PostgresAgentRepository implements AgentRepository {
     return rows.map(mapAgentRow);
   }
 
+  async list(page: PageQuery): Promise<Page<Agent>> {
+    const limit = clampLimit(page.limit);
+    let rows: AgentRow[];
+    if (page.cursor) {
+      const { ts, id } = decodeCursor(page.cursor);
+      rows = (
+        await this.db().query<AgentRow>(
+          `SELECT ${COLS} FROM agents WHERE (created_at, id) < ($1::timestamptz, $2::uuid)
+           ORDER BY created_at DESC, id DESC LIMIT $3`,
+          [ts, id, limit + 1],
+        )
+      ).rows;
+    } else {
+      rows = (
+        await this.db().query<AgentRow>(
+          `SELECT ${COLS} FROM agents ORDER BY created_at DESC, id DESC LIMIT $1`,
+          [limit + 1],
+        )
+      ).rows;
+    }
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit).map(mapAgentRow);
+    const last = items[items.length - 1];
+    return {
+      items,
+      hasMore,
+      nextCursor: hasMore && last ? encodeCursor(last.createdAt, last.id) : null,
+    };
+  }
+
   async updateStatus(id: string, status: AgentState): Promise<void> {
     await this.db().query(`UPDATE agents SET status = $2::agent_state, updated_at = now() WHERE id = $1`, [
       id,
       status,
+    ]);
+  }
+
+  async updateMetadata(id: string, name: string | null, description: string | null): Promise<void> {
+    await this.db().query(`UPDATE agents SET name = $2, description = $3, updated_at = now() WHERE id = $1`, [
+      id,
+      name,
+      description,
     ]);
   }
 

@@ -14,10 +14,12 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // Strip the /api prefix so /api/agents -> gateway /agents (HTTP in local/compose).
       '/api': {
-        target: 'https://localhost:8443',
+        target: 'http://localhost:8443',
         changeOrigin: true,
         secure: false,
+        rewrite: (p) => p.replace(/^\/api/, ''),
       },
     },
   },

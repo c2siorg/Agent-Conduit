@@ -15,7 +15,11 @@ import type {
 import type { StorageDriver } from '../../storageDriver.js';
 import { stubRepository } from '../stubRepository.js';
 import { PostgresAgentRepository } from './agentRepository.js';
+import { PostgresAuditLogRepository } from './auditLogRepository.js';
+import { PostgresCapabilityGrantRepository } from './capabilityGrantRepository.js';
+import { PostgresConnectionRepository } from './connectionRepository.js';
 import { PostgresHostRepository } from './hostRepository.js';
+import { PostgresJtiCacheRepository } from './jtiCacheRepository.js';
 import type { Queryable } from './queryable.js';
 
 /** Postgres connection settings (from `storage.postgres`, plus test/transaction conveniences). */
@@ -69,15 +73,13 @@ export class PostgresStorageDriver implements StorageDriver {
 
   readonly hosts: HostRepository;
   readonly agents: AgentRepository;
-  readonly capabilityGrants: CapabilityGrantRepository =
-    stubRepository<CapabilityGrantRepository>('PostgresCapabilityGrantRepository');
-  readonly connections: ConnectionRepository =
-    stubRepository<ConnectionRepository>('PostgresConnectionRepository');
+  readonly capabilityGrants: CapabilityGrantRepository;
+  readonly connections: ConnectionRepository;
   readonly connectionGrants: ConnectionGrantRepository =
     stubRepository<ConnectionGrantRepository>('PostgresConnectionGrantRepository');
   readonly tools: ToolRepository = stubRepository<ToolRepository>('PostgresToolRepository');
-  readonly auditLog: AuditLogRepository = stubRepository<AuditLogRepository>('PostgresAuditLogRepository');
-  readonly jtiCache: JtiCacheRepository = stubRepository<JtiCacheRepository>('PostgresJtiCacheRepository');
+  readonly auditLog: AuditLogRepository;
+  readonly jtiCache: JtiCacheRepository;
 
   constructor(
     private readonly config: PostgresConfig,
@@ -92,6 +94,10 @@ export class PostgresStorageDriver implements StorageDriver {
     };
     this.hosts = new PostgresHostRepository(db);
     this.agents = new PostgresAgentRepository(db);
+    this.jtiCache = new PostgresJtiCacheRepository(db);
+    this.capabilityGrants = new PostgresCapabilityGrantRepository(db);
+    this.connections = new PostgresConnectionRepository(db);
+    this.auditLog = new PostgresAuditLogRepository(db);
   }
 
   async init(): Promise<void> {

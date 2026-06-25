@@ -10,7 +10,10 @@
     "build": "tsc --build",
     "clean": "tsc --build --clean",
     "start": "node dist/index.js",
-    "migrate": "node dist/migrate.js"
+    "migrate": "node dist/migrate.js",
+    "bootstrap:host": "node dist/scripts/bootstrapHost.js",
+    "demo": "node dist/scripts/demoE2e.js",
+    "example:agent": "node dist/scripts/exampleAgent.js"
   },
   "dependencies": {
     "@conduit/adapters": "*",

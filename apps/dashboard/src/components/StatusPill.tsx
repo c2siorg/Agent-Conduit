@@ -1,15 +1,19 @@
-/** Maps a lifecycle status → a design-token pill class. */
-const STATUS_CLASS: Record<string, string> = {
-  active: 'pillActive',
-  pending: 'pillPending',
-  expired: 'pillPending',
-  revoked: 'pillRevoked',
-  rejected: 'pillRevoked',
-  claimed: 'pillClaimed',
+const MAP: Record<string, { cls: string; label: string }> = {
+  active: { cls: 'pill-ok', label: 'Active' },
+  pending: { cls: 'pill-warn', label: 'Pending' },
+  expired: { cls: 'pill-warn', label: 'Expired' },
+  revoked: { cls: 'pill-danger', label: 'Revoked' },
+  rejected: { cls: 'pill-danger', label: 'Rejected' },
+  claimed: { cls: 'pill-claimed', label: 'Claimed' },
 };
 
-/** StatusPill — compact status indicator used across the agent/connection tables. */
-export function StatusPill({ status }: { status: string }): JSX.Element {
-  const cls = STATUS_CLASS[status] ?? 'pillPending';
-  return <span className={`pill ${cls}`}>{status}</span>;
+/** Compact status indicator: a colored dot + label, color-coded by lifecycle state. */
+export function StatusPill({ status, label }: { status: string; label?: string }): JSX.Element {
+  const m = MAP[status] ?? { cls: 'pill-info', label: status };
+  return (
+    <span className={`pill ${m.cls}`}>
+      <span className="pillDot" />
+      {label ?? m.label}
+    </span>
+  );
 }

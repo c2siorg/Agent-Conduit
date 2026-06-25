@@ -1,38 +1,47 @@
-/* Conduit design tokens — dark, data-dense security-console aesthetic.
-   Reconcile with docs/design/DESIGN.md + docs/design/mockups before final UI work.
-   Restrained accent, monospaced numerals for metrics/identifiers, no generic AI gradients. */
+/* Conduit design tokens - dark, data-dense security-console aesthetic. */
 :root {
+  color-scheme: dark;
+
   /* Surfaces */
-  --color-bg: #0b0f14;
-  --color-surface: #121822;
-  --color-surface-raised: #18202b;
-  --color-border: #232c38;
+  --bg: #0a0e13;
+  --surface: #10151d;
+  --surface-2: #151c26;
+  --surface-3: #1b2430;
+  --border: #222c39;
+  --border-strong: #2c3849;
 
   /* Text */
-  --color-text: #e6edf3;
-  --color-text-muted: #8b97a7;
+  --text: #e7edf4;
+  --text-muted: #8a97a8;
+  --text-dim: #5a6675;
 
-  /* Accent (restrained — status + primary actions only) */
-  --color-accent: #3fb6a8;
-  --color-accent-hover: #4fd0c0;
+  /* Accent + status */
+  --accent: #2dd4bf;
+  --accent-hover: #54e0cf;
+  --accent-ink: #042019;
+  --ok: #3fb950;
+  --warn: #d4a017;
+  --danger: #f0556a;
+  --info: #5aa2ff;
+  --claimed: #a371f7;
 
-  /* Status pills */
-  --color-status-active: #3fb950;
-  --color-status-pending: #d29922;
-  --color-status-revoked: #f85149;
-  --color-status-claimed: #a371f7;
+  /* Typography (system-ui first; avoid Inter/Roboto defaults) */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', 'IBM Plex Sans', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'IBM Plex Mono', 'Cascadia Code', monospace;
 
-  /* Typography — avoid Inter/Roboto defaults; mono for numerals/identifiers */
-  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Code', monospace;
-
-  /* Spacing scale */
+  /* Spacing */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
 
-  --radius: 6px;
+  /* Radius + elevation */
+  --r-sm: 6px;
+  --r: 9px;
+  --r-lg: 14px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.28);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }

@@ -1,15 +1,24 @@
 import { createServer } from 'node:http';
+import { createConnectorRegistry } from '@conduit/connectors';
+import { createJwtVerifier } from '@conduit/crypto';
 import { PostgresStorageDriver, type PostgresConfig } from '@conduit/storage';
+import { buildAgentPipeline, buildHostPipeline } from './auth/stages/index.js';
 import { loadConfig } from './config/configLoader.js';
+import { createConnectionProxy } from './connections/connectionProxy.js';
+import { createConnectionRegistryService } from './connections/connectionRegistry.js';
+import { createCredentialCipher, resolveMasterKey } from './connections/credentialCipher.js';
+import { createConstraintEngine } from './identity/constraintEngine.js';
+import { createIdentityService } from './identity/identityService.js';
+import { createStateMachine } from './identity/stateMachine.js';
 import { createLogger } from './observability/logger.js';
-import { createHealthApp } from './server/healthApp.js';
+import { createGatewayApp } from './server/gatewayApp.js';
 
 /**
  * Agent Conduit gateway entrypoint.
  *
- * Current boot (minimal, operational): loadConfig -> create Postgres driver -> init() + migrate()
- * (migrations run automatically on startup) -> serve the health/readiness app -> listen.
- * Fails fast on any startup error. The full pillar wiring (createApp + JWT pipelines) is still pending.
+ * Boot: loadConfig -> Postgres init + migrate-on-startup -> crypto verifier, state machine, identity
+ * service -> build the agent/host JWT pipelines -> mount the gateway app -> listen. Fails fast on any
+ * startup error. Sprint 1 surface: discovery/JWKS, agent register + status, and the admin registry.
  */
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -20,11 +29,8 @@ async function main(): Promise<void> {
   });
 
   if (config.storage.driver !== 'postgres' || !config.storage.postgres) {
-    throw new Error(
-      `unsupported storage driver "${config.storage.driver}" — only postgres is implemented so far`,
-    );
+    throw new Error(`unsupported storage driver "${config.storage.driver}" — only postgres is implemented`);
   }
-
   const pg = config.storage.postgres;
   const driverConfig: PostgresConfig = {
     host: pg.host,
@@ -45,7 +51,40 @@ async function main(): Promise<void> {
   await storage.migrate();
   logger.info('migrations applied');
 
-  const app = createHealthApp({ config, storage, logger });
+  const verifier = createJwtVerifier();
+  const constraintEngine = createConstraintEngine();
+  const stateMachine = createStateMachine(storage);
+  const identityService = createIdentityService({
+    storage,
+    stateMachine,
+    lifetimes: config.security.lifetimes,
+  });
+
+  const cipher = createCredentialCipher(
+    resolveMasterKey(config.crypto.masterKey.envVar ?? 'CONDUIT_MASTER_KEY'),
+  );
+  const connectors = createConnectorRegistry(config.connectors.enabled);
+  const connectionProxy = createConnectionProxy({ storage, cipher, connectors });
+  const connectionRegistry = createConnectionRegistryService(storage, cipher);
+
+  const pipelineConfig = {
+    issuer: config.server.baseUrl,
+    clockSkewSeconds: config.security.jwt.clockSkewSeconds,
+    jtiCacheWindowSeconds: config.security.jwt.jtiCacheWindowSeconds,
+  };
+  const agentPipeline = buildAgentPipeline({ verifier, storage, constraintEngine, config: pipelineConfig });
+  const hostPipeline = buildHostPipeline({ verifier, storage, constraintEngine, config: pipelineConfig });
+
+  const app = createGatewayApp({
+    config,
+    storage,
+    logger,
+    identityService,
+    connectionRegistry,
+    connectionProxy,
+    agentPipeline,
+    hostPipeline,
+  });
   const server = createServer(app);
 
   await new Promise<void>((ready) => {
@@ -53,7 +92,6 @@ async function main(): Promise<void> {
   });
   logger.info('gateway listening', { url: `http://${config.server.host}:${config.server.port}` });
 
-  // Graceful shutdown.
   const shutdown = (signal: string): void => {
     logger.info('shutting down', { signal });
     server.close(() => {
@@ -65,7 +103,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  // Fail fast with a clear message; do not leave the process half-started.
   process.stderr.write(`fatal: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(1);
 });

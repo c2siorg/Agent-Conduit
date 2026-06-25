@@ -12,9 +12,8 @@ export interface JwtPipelineStage {
 /**
  * JwtPipeline — Chain of Responsibility runner.
  *
- * Stages run in fixed order and are NEVER reordered or skipped — not even on cache hits,
- * because revocation must take effect immediately (a revoked agent must fail the state stage).
- * @remarks Stub.
+ * Stages run in fixed order and are NEVER reordered or skipped — not even on cache hits, because
+ * revocation must take effect immediately (a revoked agent must fail the state stage).
  */
 export class JwtPipeline {
   constructor(private readonly stages: readonly JwtPipelineStage[]) {}
@@ -24,7 +23,9 @@ export class JwtPipeline {
     return this.stages.map((s) => s.name);
   }
 
-  run(_ctx: AuthContext): Promise<void> {
-    throw new Error('JwtPipeline.run not implemented');
+  async run(ctx: AuthContext): Promise<void> {
+    for (const stage of this.stages) {
+      await stage.execute(ctx);
+    }
   }
 }

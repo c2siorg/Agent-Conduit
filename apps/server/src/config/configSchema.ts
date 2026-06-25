@@ -67,9 +67,17 @@ export interface RateLimitConfig {
   unknownHostRegistrationPerHourPerIp: number;
 }
 
+/** The three agent lifetime clocks, in seconds, stamped on activation (AAP §2.4). */
+export interface AgentLifetimesConfig {
+  sessionTtlSeconds: number;
+  maxLifetimeSeconds: number;
+  absoluteLifetimeSeconds: number;
+}
+
 export interface SecurityConfig {
   jwt: JwtSecurityConfig;
   rateLimits: RateLimitConfig;
+  lifetimes: AgentLifetimesConfig;
   /** RFC 9449 — off by default. */
   dpop: { enabled: boolean };
   /** RFC 8705 — off by default. */

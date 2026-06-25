@@ -1,25 +1,44 @@
 import type { Connection } from '@conduit/core';
+import type { StorageDriver } from '@conduit/storage';
+import type { CredentialCipher } from './credentialCipher.js';
 
 /** Admin input to register a platform credential. The raw secret is encrypted before it touches storage. */
 export interface RegisterConnectionInput {
   name: string;
   platform: string;
-  /** Raw credential — encrypted immediately by the CredentialCipher; never persisted in plaintext. */
+  authMethod?: string;
+  /** Raw credential material - encrypted (AES-256-GCM) immediately; never persisted in plaintext. */
   secret: Record<string, string>;
   allowedOperations: string[];
 }
 
 /**
- * ConnectionRegistryService — admin-only credential governance.
- *
- * Agents NEVER register credentials. The service validates the credential via the platform driver,
- * encrypts it (AES-256-GCM), and stores ciphertext only. Raw tokens are never returned to any caller.
- * @remarks Scaffold — methods stubbed.
+ * ConnectionRegistryService - admin-only credential governance. Agents NEVER register credentials.
+ * The service encrypts the credential and stores ciphertext only; raw tokens are never returned.
  */
 export interface ConnectionRegistryService {
   registerConnection(input: RegisterConnectionInput): Promise<Connection>;
   listConnections(): Promise<Connection[]>;
-  grantToAgent(agentId: string, connectionId: string, allowedOperations: string[]): Promise<void>;
-  /** Re-authenticate / rotate the stored credential for a connection. */
-  rotateCredential(connectionId: string, secret: Record<string, string>): Promise<void>;
+}
+
+export function createConnectionRegistryService(
+  storage: StorageDriver,
+  cipher: CredentialCipher,
+): ConnectionRegistryService {
+  return {
+    async registerConnection(input) {
+      const payload = JSON.stringify({ authMethod: input.authMethod ?? 'bearer', secret: input.secret });
+      const credentialEncrypted = cipher.encrypt(payload);
+      return storage.connections.create({
+        name: input.name,
+        platform: input.platform,
+        credentialEncrypted,
+        allowedOperations: input.allowedOperations,
+      });
+    },
+    async listConnections() {
+      const page = await storage.connections.list({ limit: 200 });
+      return page.items;
+    },
+  };
 }

@@ -77,6 +77,6 @@ export class ConduitError extends Error {
 
   /** Serialize to the wire envelope. */
   toEnvelope(): ErrorEnvelope {
-    throw new Error('ConduitError.toEnvelope not implemented');
+    return { error: this.code, message: this.message, ...this.fields };
   }
 }

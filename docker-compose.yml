@@ -1,8 +1,8 @@
-# Agent Conduit — full local stack: gateway + database (+ optional demo agent).
+# Agent Conduit - full local stack: database + gateway + dashboard (+ optional one-shot demo).
 # Usage:
-#   docker compose up -d --wait db      # database only (e.g. for running tests)
-#   docker compose up --build           # database + gateway (health/readiness server)
-#   docker compose --profile demo up    # also start the demo agent
+#   docker compose up --build              # db + gateway + dashboard
+#   docker compose --profile demo run --rm demo   # register a demo agent end to end
+#   open http://localhost:8080             # the dashboard (Active Agent Identities)
 
 services:
   # Default storage backend.
@@ -22,7 +22,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # The gateway. Today this boots config -> Postgres -> migrations -> a health/readiness server.
+  # The gateway. Boots config -> Postgres -> migrations -> discovery/identity/health server.
   conduit:
     build:
       context: .
@@ -39,11 +39,13 @@ services:
       PGPASSWORD: ${PGPASSWORD:-conduit}
       CONDUIT_PORT: '8443'
       CONDUIT_BASE_URL: http://localhost:8443
+      # Credential encryption key (base64-encoded 32 bytes). Override in production; never commit a real key.
+      # Generate with: openssl rand -base64 32
+      CONDUIT_MASTER_KEY: ${CONDUIT_MASTER_KEY:-Y29uZHVpdC1kZXYtbWFzdGVyLWtleS0zMmJ5dGVzISE=}
       LOG_LEVEL: info
     ports:
       - '8443:8443'
     volumes:
-      # Mount config read-only so deployers tune behavior without rebuilding (optional; env wins).
       - ./conduit.config.yaml:/app/conduit.config.yaml:ro
     healthcheck:
       test:
@@ -56,17 +58,62 @@ services:
       retries: 5
       start_period: 20s
 
-  # Optional demo agent (only with `--profile demo`).
-  demo-agent:
+  # The admin dashboard (static build served by nginx; /api is proxied to the gateway).
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    depends_on:
+      - conduit
+    environment:
+      CONDUIT_ORIGIN: http://conduit:8443
+    ports:
+      - '8080:8080'
+
+  # One-shot end-to-end demo: bootstraps a host, registers an agent, hits /agent/status.
+  # Run with: docker compose --profile demo run --rm demo
+  demo:
     profiles: [demo]
     build:
       context: .
       dockerfile: Dockerfile
-      target: demo-agent
+      target: runtime
     depends_on:
-      - conduit
+      conduit:
+        condition: service_healthy
     environment:
-      CONDUIT_BASE_URL: http://conduit:8443
+      PGHOST: db
+      PGPORT: '5432'
+      PGDATABASE: conduit
+      PGUSER: conduit
+      PGPASSWORD: ${PGPASSWORD:-conduit}
+      # Connect to the gateway in-network, but sign aud as its advertised issuer.
+      CONDUIT_DEMO_URL: http://conduit:8443
+      CONDUIT_AUD: http://localhost:8443
+    command: ['node', 'apps/server/dist/scripts/demoE2e.js']
+
+  # Long-running self-contained example agent (no external API key): registers itself, then heartbeats -
+  # proving its identity to Conduit every ~15s. Revoke it in the dashboard to watch the heartbeat be DENIED.
+  # Run with: docker compose --profile example up -d example-agent   (then: docker compose logs -f example-agent)
+  example-agent:
+    profiles: [example]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    depends_on:
+      conduit:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGPORT: '5432'
+      PGDATABASE: conduit
+      PGUSER: conduit
+      PGPASSWORD: ${PGPASSWORD:-conduit}
+      CONDUIT_DEMO_URL: http://conduit:8443
+      CONDUIT_AUD: http://localhost:8443
+      EXAMPLE_HEARTBEAT_MS: '15000'
+    command: ['node', 'apps/server/dist/scripts/exampleAgent.js']
 
 volumes:
   pgdata: {}

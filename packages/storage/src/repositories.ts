@@ -33,6 +33,8 @@ export interface NewAgent {
   hostId: string;
   publicKeyJwk: Jwk | null;
   jwksUrl: string | null;
+  name: string | null;
+  description: string | null;
   mode: AgentMode;
   status: AgentState;
 }
@@ -40,6 +42,8 @@ export interface NewAgent {
 export interface NewCapabilityGrant {
   agentId: string;
   capability: string;
+  connectionId: string | null;
+  operation: string | null;
   status: GrantStatus;
   constraints: Record<string, Constraint>;
   grantedBy: string | null;
@@ -97,7 +101,11 @@ export interface AgentRepository {
   /** Fallback lookup by `sub` during the JWKS key-rotation race (AAP §8.7). */
   findBySubject(sub: string): Promise<Agent | null>;
   listByHost(hostId: string): Promise<Agent[]>;
+  /** All agents, newest first (admin/dashboard registry view). */
+  list(page: PageQuery): Promise<Page<Agent>>;
   updateStatus(id: string, status: AgentState): Promise<void>;
+  /** Update operator-facing metadata (name/description). */
+  updateMetadata(id: string, name: string | null, description: string | null): Promise<void>;
   /** Extend the session TTL (called once per authenticated request). */
   touchSession(id: string, sessionExpiresAt: Date): Promise<void>;
   /** Reactivation resets session + max clocks, never the absolute clock (AAP §2.5). */
