@@ -44,6 +44,9 @@ export interface Host {
 export interface Agent {
   id: string;
   hostId: string;
+  /** Operator-facing label + note (NOT part of the AAP wire protocol; treat as untrusted display data). */
+  name: string | null;
+  description: string | null;
   publicKeyJwk: Jwk | null;
   jwksUrl: string | null;
   status: AgentState;

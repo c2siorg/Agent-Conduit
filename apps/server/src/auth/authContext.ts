@@ -1,4 +1,4 @@
-import type { Agent, AgentJwtClaims, Host, HostJwtClaims, JwtTyp } from '@conduit/core';
+import type { Agent, AgentJwtClaims, CapabilityGrant, Host, HostJwtClaims, JwtTyp } from '@conduit/core';
 
 /**
  * AuthContext — mutable state threaded through the JWT pipeline (Chain of Responsibility).
@@ -20,4 +20,6 @@ export interface AuthContext {
   claims?: HostJwtClaims | AgentJwtClaims;
   host?: Host;
   agent?: Agent;
+  /** The resolved capability grant (set by the capability+constraint stage for execute). */
+  grant?: CapabilityGrant;
 }

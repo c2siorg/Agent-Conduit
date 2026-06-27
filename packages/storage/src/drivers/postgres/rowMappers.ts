@@ -19,6 +19,8 @@ export type AgentRow = {
   host_id: string;
   public_key_jwk: Jwk | null;
   jwks_url: string | null;
+  name: string | null;
+  description: string | null;
   status: AgentState;
   mode: AgentMode;
   activated_at: Date | null;
@@ -50,6 +52,8 @@ export function mapAgentRow(r: AgentRow): Agent {
     hostId: r.host_id,
     publicKeyJwk: r.public_key_jwk,
     jwksUrl: r.jwks_url,
+    name: r.name,
+    description: r.description,
     status: r.status,
     mode: r.mode,
     activatedAt: r.activated_at,

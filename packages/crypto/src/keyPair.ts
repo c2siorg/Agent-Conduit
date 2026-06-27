@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import type { Jwk } from '@conduit/core';
 
 /**
@@ -11,8 +12,11 @@ export interface GeneratedKeyPair {
 
 /**
  * Generate an Ed25519 keypair using `node:crypto` ONLY (no third-party crypto libs).
- * @remarks Stub — will wrap `crypto.generateKeyPair('ed25519', …)` and export JWKs.
+ * Exports both halves as JWKs (OKP / Ed25519).
  */
 export function generateEd25519KeyPair(): GeneratedKeyPair {
-  throw new Error('generateEd25519KeyPair not implemented');
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  const publicKeyJwk = publicKey.export({ format: 'jwk' }) as unknown as Jwk;
+  const privateKeyJwk = privateKey.export({ format: 'jwk' }) as unknown as Jwk & { d: string };
+  return { publicKeyJwk, privateKeyJwk };
 }

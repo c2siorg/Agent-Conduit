@@ -37,6 +37,9 @@ export interface CapabilityGrant {
   id: string;
   agentId: string;
   capability: string;
+  /** Conduit mapping: which connection + operation this capability invokes (Conduit extension). */
+  connectionId: string | null;
+  operation: string | null;
   status: GrantStatus;
   constraints: Record<string, Constraint>;
   grantedBy: string | null;

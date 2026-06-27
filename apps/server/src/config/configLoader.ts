@@ -36,6 +36,11 @@ function defaults(): ConduitConfig {
         perIpPerMinute: 600,
         unknownHostRegistrationPerHourPerIp: 5,
       },
+      lifetimes: {
+        sessionTtlSeconds: 3600, // 1h
+        maxLifetimeSeconds: 2_592_000, // 30d
+        absoluteLifetimeSeconds: 7_776_000, // 90d
+      },
       dpop: { enabled: false },
       mtls: { enabled: false },
     },

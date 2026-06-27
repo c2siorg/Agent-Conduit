@@ -8,3 +8,4 @@ export * from './connectorRegistry.js';
 export { SlackDriver } from './drivers/slack/slackDriver.js';
 export { GitHubDriver } from './drivers/github/githubDriver.js';
 export { RestDriver } from './drivers/rest/restDriver.js';
+export { MockDriver } from './drivers/mock/mockDriver.js';
