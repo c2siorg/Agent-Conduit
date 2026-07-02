@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { createAdapterRegistry } from '@conduit/adapters';
 import { createConnectorRegistry } from '@conduit/connectors';
 import { createJwtVerifier } from '@conduit/crypto';
 import { PostgresStorageDriver, type PostgresConfig } from '@conduit/storage';
@@ -11,7 +12,13 @@ import { createConstraintEngine } from './identity/constraintEngine.js';
 import { createIdentityService } from './identity/identityService.js';
 import { createStateMachine } from './identity/stateMachine.js';
 import { createLogger } from './observability/logger.js';
+import { createMetrics } from './observability/metrics.js';
+import { createSecurityEventStream } from './observability/securityEventStream.js';
+import { createSchemaCache } from './router/schemaCache.js';
+import { createTokenRouter } from './router/tokenRouter.js';
 import { createGatewayApp } from './server/gatewayApp.js';
+
+const SCHEMA_CACHE_TTL_SECONDS = 300;
 
 /**
  * Agent Conduit gateway entrypoint.
@@ -58,6 +65,8 @@ async function main(): Promise<void> {
     storage,
     stateMachine,
     lifetimes: config.security.lifetimes,
+    verifier,
+    issuer: config.server.baseUrl,
   });
 
   const cipher = createCredentialCipher(
@@ -66,6 +75,12 @@ async function main(): Promise<void> {
   const connectors = createConnectorRegistry(config.connectors.enabled);
   const connectionProxy = createConnectionProxy({ storage, cipher, connectors });
   const connectionRegistry = createConnectionRegistryService(storage, cipher);
+
+  const adapters = createAdapterRegistry();
+  const schemaCache = createSchemaCache(SCHEMA_CACHE_TTL_SECONDS);
+  const metrics = createMetrics();
+  const events = createSecurityEventStream();
+  const tokenRouter = createTokenRouter({ storage, adapters, cache: schemaCache, metrics });
 
   const pipelineConfig = {
     issuer: config.server.baseUrl,
@@ -82,6 +97,10 @@ async function main(): Promise<void> {
     identityService,
     connectionRegistry,
     connectionProxy,
+    tokenRouter,
+    schemaCache,
+    events,
+    metrics,
     agentPipeline,
     hostPipeline,
   });

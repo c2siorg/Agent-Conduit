@@ -133,6 +133,40 @@ export function capabilityRoutes(deps: CapabilityRoutesDeps): Router {
       .catch(next);
   });
 
+  router.get('/capability/describe', (req, res, next) => {
+    const token = bearerToken(req);
+    if (!token) {
+      next(new ConduitError(ErrorCode.authenticationRequired, 'missing bearer token', 401));
+      return;
+    }
+    const name = typeof req.query['name'] === 'string' ? req.query['name'] : '';
+    if (!name) {
+      next(new ConduitError(ErrorCode.invalidRequest, 'name query parameter is required', 400));
+      return;
+    }
+    const ctx: AuthContext = { token, expectedTyp: 'agent+jwt' };
+    deps.agentPipeline
+      .run(ctx)
+      .then(async () => {
+        if (!ctx.agent) {
+          throw new ConduitError(ErrorCode.internalError, 'agent not resolved', 500);
+        }
+        const grants = await deps.identityService.listGrants(ctx.agent.id);
+        const grant = grants.find((g) => g.capability === name);
+        if (!grant) {
+          res.json({ name, description: 'Not granted to this agent.', grant_status: 'not_granted' });
+          return;
+        }
+        res.json({
+          name,
+          description: grant.operation ? `Executes "${grant.operation}"` : 'Awaiting operator mapping',
+          input: { type: 'object', constraints: grant.constraints },
+          grant_status: grant.status === 'active' ? 'granted' : 'not_granted',
+        });
+      })
+      .catch(next);
+  });
+
   router.post('/capability/execute', (req, res, next) => {
     const token = bearerToken(req);
     if (!token) {
