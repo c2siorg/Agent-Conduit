@@ -1,4 +1,4 @@
-import type { Agent, AgentState } from '@conduit/core';
+import type { Agent, AgentState, Jwk } from '@conduit/core';
 import type { Page, PageQuery } from '../../pagination.js';
 import type { AgentLifetimes, AgentRepository, NewAgent } from '../../repositories.js';
 import type { Queryable } from './queryable.js';
@@ -86,6 +86,13 @@ export class PostgresAgentRepository implements AgentRepository {
     await this.db().query(`UPDATE agents SET status = $2::agent_state, updated_at = now() WHERE id = $1`, [
       id,
       status,
+    ]);
+  }
+
+  async updatePublicKey(id: string, publicKeyJwk: Jwk): Promise<void> {
+    await this.db().query(`UPDATE agents SET public_key_jwk = $2::jsonb, updated_at = now() WHERE id = $1`, [
+      id,
+      JSON.stringify(publicKeyJwk),
     ]);
   }
 

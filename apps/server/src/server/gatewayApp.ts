@@ -7,9 +7,15 @@ import type { ConnectionProxy } from '../connections/connectionProxy.js';
 import type { ConnectionRegistryService } from '../connections/connectionRegistry.js';
 import type { IdentityService } from '../identity/identityService.js';
 import type { Logger } from '../observability/logger.js';
+import type { Metrics } from '../observability/metrics.js';
+import type { SecurityEventStream } from '../observability/securityEventStream.js';
+import type { SchemaCache } from '../router/schemaCache.js';
+import type { TokenRouter } from '../router/tokenRouter.js';
 import { adminRoutes } from '../routes/adminRoutes.js';
 import { capabilityRoutes } from '../routes/capabilityRoutes.js';
 import { identityRoutes } from '../routes/identityRoutes.js';
+import { observabilityRoutes } from '../routes/observabilityRoutes.js';
+import { toolRoutes } from '../routes/toolRoutes.js';
 import { wellKnownRoutes } from '../routes/wellKnownRoutes.js';
 import { errorHandler } from './errorHandler.js';
 
@@ -20,6 +26,10 @@ export interface GatewayAppDeps {
   identityService: IdentityService;
   connectionRegistry: ConnectionRegistryService;
   connectionProxy: ConnectionProxy;
+  tokenRouter: TokenRouter;
+  schemaCache: SchemaCache;
+  events: SecurityEventStream;
+  metrics: Metrics;
   agentPipeline: JwtPipeline;
   hostPipeline: JwtPipeline;
 }
@@ -59,6 +69,16 @@ export function createGatewayApp(deps: GatewayAppDeps): Express {
       hostPipeline: deps.hostPipeline,
     }),
   );
+  app.use(
+    toolRoutes({
+      tokenRouter: deps.tokenRouter,
+      storage: deps.storage,
+      cache: deps.schemaCache,
+      agentPipeline: deps.agentPipeline,
+      hostPipeline: deps.hostPipeline,
+    }),
+  );
+  app.use(observabilityRoutes({ events: deps.events, metrics: deps.metrics }));
 
   app.get('/healthz', (_req, res) => {
     res.json({ status: 'ok' });
@@ -79,6 +99,6 @@ export function createGatewayApp(deps: GatewayAppDeps): Express {
     res.json({ service: 'agent-conduit', status: 'running' });
   });
 
-  app.use(errorHandler());
+  app.use(errorHandler(deps.events));
   return app;
 }

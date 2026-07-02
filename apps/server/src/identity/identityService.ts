@@ -1,7 +1,23 @@
+import { decodeJwt, type JwtVerifier } from '@conduit/crypto';
 import { ConduitError, ErrorCode } from '@conduit/core';
-import type { Agent, AgentMode, CapabilityGrant, Constraint, Jwk } from '@conduit/core';
+import type { Agent, AgentMode, CapabilityGrant, Constraint, Host, Jwk } from '@conduit/core';
 import type { StorageDriver } from '@conduit/storage';
 import type { StateMachine } from './stateMachine.js';
+
+/** RFC 7662 / AAP §5.12 introspection response for an agent token. */
+export interface IntrospectionResult {
+  active: boolean;
+  sub?: string | undefined;
+  iss?: string | undefined;
+  aud?: string | undefined;
+  exp?: number | undefined;
+  iat?: number | undefined;
+  jti?: string | undefined;
+  typ?: string | undefined;
+  agent_status?: string | undefined;
+  mode?: string | undefined;
+  capabilities?: string[] | undefined;
+}
 
 /** Inputs for agent registration (the host is already authenticated by the host pipeline). */
 export interface RegisterAgentInput {
@@ -39,6 +55,9 @@ export interface IdentityServiceDeps {
   storage: StorageDriver;
   stateMachine: StateMachine;
   lifetimes: AgentLifetimeConfig;
+  verifier: JwtVerifier;
+  /** Expected `aud` for tokens (the gateway issuer) - used by introspection. */
+  issuer: string;
 }
 
 /**
@@ -67,10 +86,20 @@ export interface IdentityService {
   requestCapability(agentId: string, requests: CapabilityRequest[]): Promise<CapabilityGrant[]>;
   /** All capability grants for an agent, any status (drives `/agent/status` and `/capability/list`). */
   listGrants(agentId: string): Promise<CapabilityGrant[]>;
+  /** Reactivate an expired agent (AAP §2.5): resets session + max clocks, never the absolute clock. */
+  reactivateAgent(hostId: string, agentId: string): Promise<Agent>;
+  /** Rotate an agent's public key (AAP §5.9). The private key never leaves the client. */
+  rotateAgentKey(hostId: string, agentId: string, publicKeyJwk: Jwk): Promise<Agent>;
+  /** Revoke a host (AAP §2.11); cascades to revoke its active/expired agents. */
+  revokeHost(hostId: string): Promise<void>;
+  /** Rotate a host's public key (AAP §5.10); the host's `iss` thumbprint changes accordingly. */
+  rotateHostKey(hostId: string, publicKeyJwk: Jwk): Promise<Host>;
+  /** Introspect an agent token (AAP §5.12 / RFC 7662). Never throws on an invalid token: returns active=false. */
+  introspect(token: string): Promise<IntrospectionResult>;
 }
 
 export function createIdentityService(deps: IdentityServiceDeps): IdentityService {
-  const { storage, stateMachine, lifetimes } = deps;
+  const { storage, stateMachine, lifetimes, verifier, issuer } = deps;
 
   return {
     async registerAgent(hostId, input) {
@@ -193,6 +222,132 @@ export function createIdentityService(deps: IdentityServiceDeps): IdentityServic
 
     async listGrants(agentId) {
       return storage.capabilityGrants.findForAgent(agentId);
+    },
+
+    async reactivateAgent(hostId, agentId) {
+      const agent = await storage.agents.findById(agentId);
+      if (!agent) {
+        throw new ConduitError(ErrorCode.agentNotFound, 'agent not found', 404);
+      }
+      if (agent.hostId !== hostId) {
+        throw new ConduitError(ErrorCode.unauthorized, 'agent does not belong to this host', 403);
+      }
+      if (agent.absoluteExpiresAt && agent.absoluteExpiresAt.getTime() <= Date.now()) {
+        throw new ConduitError(
+          ErrorCode.invalidRequest,
+          'agent has passed its absolute lifetime and cannot be reactivated',
+          409,
+        );
+      }
+      await stateMachine.transitionAgent(agentId, 'active');
+      const now = Date.now();
+      await storage.agents.applyLifetimes(agentId, {
+        activatedAt: new Date(now),
+        sessionExpiresAt: new Date(now + lifetimes.sessionTtlSeconds * 1000),
+        maxLifetimeExpiresAt: new Date(now + lifetimes.maxLifetimeSeconds * 1000),
+        absoluteExpiresAt: agent.absoluteExpiresAt, // never reset (AAP §2.5)
+      });
+      const updated = await storage.agents.findById(agentId);
+      if (!updated) {
+        throw new ConduitError(ErrorCode.internalError, 'agent disappeared after reactivation', 500);
+      }
+      return updated;
+    },
+
+    async rotateAgentKey(hostId, agentId, publicKeyJwk) {
+      const agent = await storage.agents.findById(agentId);
+      if (!agent) {
+        throw new ConduitError(ErrorCode.agentNotFound, 'agent not found', 404);
+      }
+      if (agent.hostId !== hostId) {
+        throw new ConduitError(ErrorCode.unauthorized, 'agent does not belong to this host', 403);
+      }
+      await storage.agents.updatePublicKey(agentId, publicKeyJwk);
+      const updated = await storage.agents.findById(agentId);
+      if (!updated) {
+        throw new ConduitError(ErrorCode.internalError, 'agent disappeared after key rotation', 500);
+      }
+      return updated;
+    },
+
+    async revokeHost(hostId) {
+      const host = await storage.hosts.findById(hostId);
+      if (!host) {
+        throw new ConduitError(ErrorCode.hostNotFound, 'host not found', 404);
+      }
+      if (host.status === 'revoked') {
+        return; // idempotent
+      }
+      await stateMachine.transitionHost(hostId, 'revoked');
+      // Cascade: no agent of a revoked host may remain usable (AAP §2.11).
+      const agents = await storage.agents.listByHost(hostId);
+      for (const agent of agents) {
+        if (agent.status === 'active' || agent.status === 'expired') {
+          await stateMachine.transitionAgent(agent.id, 'revoked');
+        }
+      }
+    },
+
+    async rotateHostKey(hostId, publicKeyJwk) {
+      const host = await storage.hosts.findById(hostId);
+      if (!host) {
+        throw new ConduitError(ErrorCode.hostNotFound, 'host not found', 404);
+      }
+      await storage.hosts.updatePublicKey(hostId, publicKeyJwk);
+      const updated = await storage.hosts.findById(hostId);
+      if (!updated) {
+        throw new ConduitError(ErrorCode.internalError, 'host disappeared after key rotation', 500);
+      }
+      return updated;
+    },
+
+    async introspect(token) {
+      try {
+        const decoded = decodeJwt<{
+          sub?: string;
+          iss?: string;
+          aud?: string;
+          exp?: number;
+          iat?: number;
+          jti?: string;
+        }>(token);
+        const claims = decoded.claims;
+        if (decoded.typ !== 'agent+jwt' || !claims.sub) {
+          return { active: false };
+        }
+        const agent = await storage.agents.findById(claims.sub);
+        if (!agent || !agent.publicKeyJwk) {
+          return { active: false };
+        }
+        // Verify signature but NOT the jti (introspection is not a use of the token, so it must not
+        // trip replay protection). Claims + live state are still checked.
+        await verifier.verify(token, agent.publicKeyJwk);
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (
+          claims.aud !== issuer ||
+          (typeof claims.exp === 'number' && claims.exp <= nowSec) ||
+          agent.status !== 'active' ||
+          (agent.sessionExpiresAt !== null && agent.sessionExpiresAt.getTime() <= Date.now())
+        ) {
+          return { active: false };
+        }
+        const grants = await storage.capabilityGrants.findForAgent(claims.sub);
+        return {
+          active: true,
+          sub: claims.sub,
+          iss: claims.iss,
+          aud: claims.aud,
+          exp: claims.exp,
+          iat: claims.iat,
+          jti: claims.jti,
+          typ: 'agent+jwt',
+          agent_status: agent.status,
+          mode: agent.mode,
+          capabilities: grants.filter((g) => g.status === 'active').map((g) => g.capability),
+        };
+      } catch {
+        return { active: false };
+      }
     },
   };
 }

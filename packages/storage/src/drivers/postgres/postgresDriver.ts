@@ -20,6 +20,7 @@ import { PostgresCapabilityGrantRepository } from './capabilityGrantRepository.j
 import { PostgresConnectionRepository } from './connectionRepository.js';
 import { PostgresHostRepository } from './hostRepository.js';
 import { PostgresJtiCacheRepository } from './jtiCacheRepository.js';
+import { PostgresToolRepository } from './toolRepository.js';
 import type { Queryable } from './queryable.js';
 
 /** Postgres connection settings (from `storage.postgres`, plus test/transaction conveniences). */
@@ -77,7 +78,7 @@ export class PostgresStorageDriver implements StorageDriver {
   readonly connections: ConnectionRepository;
   readonly connectionGrants: ConnectionGrantRepository =
     stubRepository<ConnectionGrantRepository>('PostgresConnectionGrantRepository');
-  readonly tools: ToolRepository = stubRepository<ToolRepository>('PostgresToolRepository');
+  readonly tools: ToolRepository;
   readonly auditLog: AuditLogRepository;
   readonly jtiCache: JtiCacheRepository;
 
@@ -97,6 +98,7 @@ export class PostgresStorageDriver implements StorageDriver {
     this.jtiCache = new PostgresJtiCacheRepository(db);
     this.capabilityGrants = new PostgresCapabilityGrantRepository(db);
     this.connections = new PostgresConnectionRepository(db);
+    this.tools = new PostgresToolRepository(db);
     this.auditLog = new PostgresAuditLogRepository(db);
   }
 
