@@ -6,6 +6,8 @@ import {
   type AuditEntry,
   type AuditFilter,
   type ConnectionSummary,
+  type MetricsSnapshot,
+  type ToolSummary,
 } from './client';
 
 const api = createDashboardApi();
@@ -35,6 +37,16 @@ export function useConnections(): UseQueryResult<ConnectionSummary[]> {
     queryFn: () => api.listConnections(),
     refetchInterval: 10000,
   });
+}
+
+/** Registered tools (Token Router). */
+export function useTools(): UseQueryResult<ToolSummary[]> {
+  return useQuery({ queryKey: ['tools'], queryFn: () => api.listTools(), refetchInterval: 10000 });
+}
+
+/** Token/latency telemetry snapshot. */
+export function useMetrics(): UseQueryResult<MetricsSnapshot> {
+  return useQuery({ queryKey: ['metrics'], queryFn: () => api.getMetrics(), refetchInterval: 5000 });
 }
 
 /** Audit log, filtered server-side by agent/outcome, refreshed for a near-live stream. */

@@ -55,6 +55,20 @@ export interface AuditFilter {
   outcome?: string;
 }
 
+/** A registered tool, as returned by `GET /tools` (names + adapter type only; never schemas). */
+export interface ToolSummary {
+  name: string;
+  adapter_type: string;
+  schema_cached_at: string | null;
+}
+
+/** Token/latency telemetry snapshot from `GET /metrics`. */
+export interface MetricsSnapshot {
+  counters: Record<string, number>;
+  latency: Record<string, { count: number; avgMs: number; maxMs: number }>;
+  tokensByTool: Record<string, { calls: number; totalTokens: number }>;
+}
+
 export interface RegisterAgentInput {
   agentPublicKey: object;
   mode: string;
@@ -78,6 +92,8 @@ export interface DashboardApi {
   listConnections(): Promise<ConnectionSummary[]>;
   registerConnection(hostJwt: string, input: RegisterConnectionInput): Promise<{ connection_id: string }>;
   listAudit(filter?: AuditFilter): Promise<AuditEntry[]>;
+  listTools(): Promise<ToolSummary[]>;
+  getMetrics(): Promise<MetricsSnapshot>;
 }
 
 /** Build a client bound to the gateway base path (defaults to `/api`, proxied to the gateway). */
@@ -194,6 +210,22 @@ export function createDashboardApi(baseUrl = '/api'): DashboardApi {
       }
       const body = (await res.json()) as { entries: AuditEntry[] };
       return body.entries;
+    },
+
+    async listTools() {
+      const res = await fetch(`${baseUrl}/tools`);
+      if (!res.ok) {
+        throw new Error(`GET ${baseUrl}/tools -> ${res.status}`);
+      }
+      return ((await res.json()) as { tools: ToolSummary[] }).tools;
+    },
+
+    async getMetrics() {
+      const res = await fetch(`${baseUrl}/metrics`);
+      if (!res.ok) {
+        throw new Error(`GET ${baseUrl}/metrics -> ${res.status}`);
+      }
+      return (await res.json()) as MetricsSnapshot;
     },
   };
 }

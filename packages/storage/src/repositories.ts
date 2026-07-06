@@ -1,4 +1,5 @@
 import type {
+  AdapterType,
   Agent,
   AgentMode,
   AgentState,
@@ -58,6 +59,12 @@ export interface NewConnection {
   allowedOperations: string[];
 }
 
+export interface NewTool {
+  name: string;
+  adapterType: AdapterType;
+  adapterConfig: Record<string, unknown>;
+}
+
 export interface NewAuditEntry {
   agentId: string | null;
   hostId: string | null;
@@ -89,6 +96,8 @@ export interface HostRepository {
   /** Resolve by `iss` (RFC 7638 thumbprint) during JWT verification. */
   findByThumbprint(iss: string): Promise<Host | null>;
   updateStatus(id: string, status: HostState): Promise<void>;
+  /** Rotate the stored public key (AAP §5.10); the denormalized thumbprint is recomputed. */
+  updatePublicKey(id: string, publicKeyJwk: Jwk): Promise<void>;
   /** Link/unlink/switch user (AAP §2.9). */
   setUserId(id: string, userId: string | null): Promise<void>;
   list(page: PageQuery): Promise<Page<Host>>;
@@ -104,6 +113,8 @@ export interface AgentRepository {
   /** All agents, newest first (admin/dashboard registry view). */
   list(page: PageQuery): Promise<Page<Agent>>;
   updateStatus(id: string, status: AgentState): Promise<void>;
+  /** Rotate the stored public key (AAP §5.9); the private key never leaves the client. */
+  updatePublicKey(id: string, publicKeyJwk: Jwk): Promise<void>;
   /** Update operator-facing metadata (name/description). */
   updateMetadata(id: string, name: string | null, description: string | null): Promise<void>;
   /** Extend the session TTL (called once per authenticated request). */
@@ -145,6 +156,8 @@ export interface ConnectionGrantRepository {
 
 /** Tools + per-tool schema cache. */
 export interface ToolRepository {
+  /** Register or update a tool by name (admin action); clears any persisted schema cache. */
+  upsert(input: NewTool): Promise<Tool>;
   findByName(name: string): Promise<Tool | null>;
   list(page: PageQuery): Promise<Page<Tool>>;
   cacheSchema(name: string, schema: Tool['schemaCache'], cachedAt: Date): Promise<void>;

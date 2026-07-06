@@ -14,6 +14,7 @@
     "clean": "tsc --build --clean"
   },
   "dependencies": {
-    "@conduit/core": "*"
+    "@conduit/core": "*",
+    "@conduit/crypto": "*"
   }
 }

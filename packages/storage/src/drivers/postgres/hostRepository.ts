@@ -1,5 +1,5 @@
 import { jwkThumbprint } from '@conduit/crypto';
-import type { Host, HostState } from '@conduit/core';
+import type { Host, HostState, Jwk } from '@conduit/core';
 import type { Page, PageQuery } from '../../pagination.js';
 import type { HostRepository, NewHost } from '../../repositories.js';
 import type { Queryable } from './queryable.js';
@@ -53,6 +53,14 @@ export class PostgresHostRepository implements HostRepository {
       id,
       status,
     ]);
+  }
+
+  async updatePublicKey(id: string, publicKeyJwk: Jwk): Promise<void> {
+    const thumbprint = jwkThumbprint(publicKeyJwk);
+    await this.db().query(
+      `UPDATE hosts SET public_key_jwk = $2::jsonb, key_thumbprint = $3, updated_at = now() WHERE id = $1`,
+      [id, JSON.stringify(publicKeyJwk), thumbprint],
+    );
   }
 
   async setUserId(id: string, userId: string | null): Promise<void> {

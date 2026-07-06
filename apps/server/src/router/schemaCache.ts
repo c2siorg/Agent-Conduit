@@ -14,7 +14,32 @@ export interface SchemaCache {
   flush(): void;
 }
 
-/** Build a TTL cache. @remarks Stub. */
-export function createSchemaCache(_ttlSeconds: number): SchemaCache {
-  throw new Error('createSchemaCache not implemented');
+/** Build a TTL cache (per-tool). A non-positive TTL disables caching (always a miss). */
+export function createSchemaCache(ttlSeconds: number): SchemaCache {
+  const store = new Map<string, { schema: CanonicalSchema; expiresAt: number }>();
+  return {
+    get(toolName) {
+      const entry = store.get(toolName);
+      if (!entry) {
+        return undefined;
+      }
+      if (entry.expiresAt <= Date.now()) {
+        store.delete(toolName);
+        return undefined;
+      }
+      return entry.schema;
+    },
+    set(toolName, schema) {
+      if (ttlSeconds <= 0) {
+        return;
+      }
+      store.set(toolName, { schema, expiresAt: Date.now() + ttlSeconds * 1000 });
+    },
+    invalidate(toolName) {
+      store.delete(toolName);
+    },
+    flush() {
+      store.clear();
+    },
+  };
 }

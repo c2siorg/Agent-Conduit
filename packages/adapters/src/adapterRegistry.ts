@@ -1,4 +1,7 @@
 import type { AdapterType } from '@conduit/core';
+import { CliAdapter } from './cli/cliAdapter.js';
+import { McpAdapter } from './mcp/mcpAdapter.js';
+import { OpenApiAdapter } from './openapi/openApiAdapter.js';
 import type { ToolAdapter } from './toolAdapter.js';
 
 /**
@@ -10,7 +13,18 @@ export interface AdapterRegistry {
   get(type: AdapterType): ToolAdapter | undefined;
 }
 
-/** Build a registry pre-loaded with the bundled adapters (mcp/openapi/cli). @remarks Stub. */
+/** Build a registry pre-loaded with the bundled adapters (mcp/openapi/cli). */
 export function createAdapterRegistry(): AdapterRegistry {
-  throw new Error('createAdapterRegistry not implemented');
+  const adapters = new Map<AdapterType, ToolAdapter>();
+  for (const adapter of [new McpAdapter(), new OpenApiAdapter(), new CliAdapter()]) {
+    adapters.set(adapter.type, adapter);
+  }
+  return {
+    register(adapter) {
+      adapters.set(adapter.type, adapter);
+    },
+    get(type) {
+      return adapters.get(type);
+    },
+  };
 }

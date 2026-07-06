@@ -100,6 +100,94 @@ export function identityRoutes(deps: IdentityRoutesDeps): Router {
       .catch(next);
   });
 
+  router.post('/agent/reactivate', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    const body = (req.body ?? {}) as { agent_id?: string };
+    if (!body.agent_id) {
+      next(new ConduitError(ErrorCode.invalidRequest, 'agent_id is required', 400));
+      return;
+    }
+    deps.identityService
+      .reactivateAgent(host.id, body.agent_id)
+      .then((agent) => {
+        res.json({ agent_id: agent.id, status: agent.status, session_expires_at: agent.sessionExpiresAt });
+      })
+      .catch(next);
+  });
+
+  router.post('/agent/rotate-key', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    const body = (req.body ?? {}) as { agent_id?: string; agent_public_key?: Jwk };
+    if (!body.agent_id || !body.agent_public_key) {
+      next(new ConduitError(ErrorCode.invalidRequest, 'agent_id and agent_public_key are required', 400));
+      return;
+    }
+    deps.identityService
+      .rotateAgentKey(host.id, body.agent_id, body.agent_public_key)
+      .then((agent) => {
+        res.json({ agent_id: agent.id, rotated: true });
+      })
+      .catch(next);
+  });
+
+  router.post('/host/revoke', requireJwt(deps.hostPipeline, 'host+jwt'), (_req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    deps.identityService
+      .revokeHost(host.id)
+      .then(() => {
+        res.json({ host_id: host.id, status: 'revoked' });
+      })
+      .catch(next);
+  });
+
+  router.post('/host/rotate-key', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    const body = (req.body ?? {}) as { host_public_key?: Jwk };
+    if (!body.host_public_key) {
+      next(new ConduitError(ErrorCode.invalidRequest, 'host_public_key is required', 400));
+      return;
+    }
+    deps.identityService
+      .rotateHostKey(host.id, body.host_public_key)
+      .then((updated) => {
+        // The iss thumbprint changes; the client must sign subsequent host JWTs with the new key.
+        res.json({ host_id: updated.id, rotated: true });
+      })
+      .catch(next);
+  });
+
+  // Token introspection (AAP §5.12 / RFC 7662). Host-authorized; returns {active:false} for any invalid
+  // or inactive token rather than an error.
+  router.post('/agent/introspect', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const body = (req.body ?? {}) as { token?: string };
+    if (!body.token) {
+      next(new ConduitError(ErrorCode.invalidRequest, 'token is required', 400));
+      return;
+    }
+    deps.identityService
+      .introspect(body.token)
+      .then((result) => {
+        res.json(result);
+      })
+      .catch(next);
+  });
+
   router.get('/agent/status', requireJwt(deps.agentPipeline, 'agent+jwt'), (_req, res, next) => {
     const agent = getAuth(res).agent;
     if (!agent) {
