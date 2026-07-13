@@ -2,6 +2,7 @@ import type { JwtVerifier } from '@conduit/crypto';
 import type { StorageDriver } from '@conduit/storage';
 import type { ConstraintEngine } from '../../identity/constraintEngine.js';
 import { JwtPipeline } from '../jwtPipeline.js';
+import type { JwksResolver } from '../jwksResolver.js';
 import { CapabilityConstraintStage } from './capabilityConstraintStage.js';
 import { ClaimValidationStage } from './claimValidationStage.js';
 import type { PipelineConfig } from './pipelineConfig.js';
@@ -17,6 +18,8 @@ export interface PipelineDeps {
   storage: StorageDriver;
   constraintEngine: ConstraintEngine;
   config: PipelineConfig;
+  /** SSRF-hardened JWKS resolver, used when a principal has a `jwksUrl` instead of an inline key. */
+  jwksResolver?: JwksResolver;
 }
 
 /**
@@ -25,7 +28,7 @@ export interface PipelineDeps {
 export function buildAgentPipeline(deps: PipelineDeps): JwtPipeline {
   return new JwtPipeline([
     new TypCheckStage(),
-    new SignatureVerifyStage(deps.verifier, deps.storage),
+    new SignatureVerifyStage(deps.verifier, deps.storage, deps.jwksResolver),
     new ClaimValidationStage(deps.storage, deps.config),
     new StateCheckStage(deps.storage),
     new CapabilityConstraintStage(deps.constraintEngine, deps.storage),
@@ -36,7 +39,7 @@ export function buildAgentPipeline(deps: PipelineDeps): JwtPipeline {
 export function buildHostPipeline(deps: PipelineDeps): JwtPipeline {
   return new JwtPipeline([
     new TypCheckStage(),
-    new SignatureVerifyStage(deps.verifier, deps.storage),
+    new SignatureVerifyStage(deps.verifier, deps.storage, deps.jwksResolver),
     new ClaimValidationStage(deps.storage, deps.config),
     new StateCheckStage(deps.storage),
   ]);

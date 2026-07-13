@@ -1,5 +1,5 @@
 import type { StorageDriver } from '@conduit/storage';
-import express, { type Express } from 'express';
+import express, { type Express, type Request } from 'express';
 import helmet from 'helmet';
 import type { JwtPipeline } from '../auth/jwtPipeline.js';
 import type { ConduitConfig } from '../config/configSchema.js';
@@ -18,6 +18,22 @@ import { observabilityRoutes } from '../routes/observabilityRoutes.js';
 import { toolRoutes } from '../routes/toolRoutes.js';
 import { wellKnownRoutes } from '../routes/wellKnownRoutes.js';
 import { errorHandler } from './errorHandler.js';
+import { ipFilter } from './ipFilter.js';
+import { clientIp, createRateLimiter, rateLimit } from './rateLimiter.js';
+import { createRuntimeSettings, type RuntimeSettingsStore } from './runtimeSettings.js';
+
+const HEALTH_PATHS = new Set(['/healthz', '/readyz']);
+
+/** Permissive default so a minimally-configured app (e.g. tests) constructs with enforcement off. */
+function defaultSettings(): RuntimeSettingsStore {
+  return createRuntimeSettings({
+    rateLimit: { enabled: false, perIpPerMinute: 6000, registerPerHourPerIp: 600 },
+    ipFilter: { enabled: false, mode: 'deny', entries: [] },
+    jwks: { allowPrivateHosts: false },
+    dpop: { enabled: false },
+    mtls: { enabled: false },
+  });
+}
 
 export interface GatewayAppDeps {
   config: ConduitConfig;
@@ -26,6 +42,8 @@ export interface GatewayAppDeps {
   identityService: IdentityService;
   connectionRegistry: ConnectionRegistryService;
   connectionProxy: ConnectionProxy;
+  /** Operator-toggleable runtime security settings; a permissive default is used if omitted. */
+  settings?: RuntimeSettingsStore;
   tokenRouter: TokenRouter;
   schemaCache: SchemaCache;
   events: SecurityEventStream;
@@ -44,6 +62,21 @@ export function createGatewayApp(deps: GatewayAppDeps): Express {
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(express.json({ limit: deps.config.server.requestLimits.jsonBodyBytes }));
+
+  // Runtime-toggleable enforcement (operator-controlled via /admin/config): client-IP allow/deny filter,
+  // then a per-IP rate cap plus an aggressive per-IP cap on agent registration. Health + SSE are exempt.
+  const settings = deps.settings ?? defaultSettings();
+  // Health, SSE, and the admin-config recovery endpoint are exempt — so a bad IP/rate rule can always be
+  // undone by the (host-authenticated) operator and never causes a permanent self-lockout.
+  const skipInfra = (req: Request): boolean =>
+    HEALTH_PATHS.has(req.path) || req.path === '/events' || req.path === '/admin/config';
+  const ipFilterMw = ipFilter(() => settings.get().ipFilter, clientIp);
+  app.use((req, res, next) => (skipInfra(req) ? next() : ipFilterMw(req, res, next)));
+
+  const ipLimiter = createRateLimiter(60_000, () => settings.get().rateLimit.perIpPerMinute);
+  const registerLimiter = createRateLimiter(3_600_000, () => settings.get().rateLimit.registerPerHourPerIp);
+  app.use(rateLimit(ipLimiter, clientIp, { skip: (req) => skipInfra(req) || !settings.get().rateLimit.enabled }));
+  app.use('/agent/register', rateLimit(registerLimiter, clientIp, { skip: () => !settings.get().rateLimit.enabled }));
 
   app.use(wellKnownRoutes({ config: deps.config }));
   app.use(
@@ -66,6 +99,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Express {
     adminRoutes({
       storage: deps.storage,
       connectionRegistry: deps.connectionRegistry,
+      settings,
       hostPipeline: deps.hostPipeline,
     }),
   );

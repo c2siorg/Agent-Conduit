@@ -3,6 +3,7 @@ import { createAdapterRegistry } from '@conduit/adapters';
 import { createConnectorRegistry } from '@conduit/connectors';
 import { createJwtVerifier } from '@conduit/crypto';
 import { PostgresStorageDriver, type PostgresConfig } from '@conduit/storage';
+import { createJwksResolver } from './auth/jwksResolver.js';
 import { buildAgentPipeline, buildHostPipeline } from './auth/stages/index.js';
 import { loadConfig } from './config/configLoader.js';
 import { createConnectionProxy } from './connections/connectionProxy.js';
@@ -13,6 +14,7 @@ import { createIdentityService } from './identity/identityService.js';
 import { createStateMachine } from './identity/stateMachine.js';
 import { createLogger } from './observability/logger.js';
 import { createMetrics } from './observability/metrics.js';
+import { createRuntimeSettings } from './server/runtimeSettings.js';
 import { createSecurityEventStream } from './observability/securityEventStream.js';
 import { createSchemaCache } from './router/schemaCache.js';
 import { createTokenRouter } from './router/tokenRouter.js';
@@ -87,8 +89,26 @@ async function main(): Promise<void> {
     clockSkewSeconds: config.security.jwt.clockSkewSeconds,
     jtiCacheWindowSeconds: config.security.jwt.jtiCacheWindowSeconds,
   };
-  const agentPipeline = buildAgentPipeline({ verifier, storage, constraintEngine, config: pipelineConfig });
-  const hostPipeline = buildHostPipeline({ verifier, storage, constraintEngine, config: pipelineConfig });
+  // Operator-toggleable runtime security settings, seeded from static config (authoritative on restart).
+  const settings = createRuntimeSettings({
+    rateLimit: {
+      enabled: true,
+      perIpPerMinute: config.security.rateLimits.perIpPerMinute,
+      registerPerHourPerIp: config.security.rateLimits.unknownHostRegistrationPerHourPerIp,
+    },
+    ipFilter: { enabled: false, mode: 'deny', entries: [] },
+    jwks: { allowPrivateHosts: process.env['CONDUIT_JWKS_ALLOW_PRIVATE'] === 'true' },
+    dpop: { enabled: config.security.dpop.enabled },
+    mtls: { enabled: config.security.mtls.enabled },
+  });
+
+  // SSRF-hardened JWKS resolver (§8.12); the allow-private toggle is read live from runtime settings.
+  const jwksResolver = createJwksResolver({
+    allowPrivateHosts: () => settings.get().jwks.allowPrivateHosts,
+  });
+  const pipelineParts = { verifier, storage, constraintEngine, config: pipelineConfig, jwksResolver };
+  const agentPipeline = buildAgentPipeline(pipelineParts);
+  const hostPipeline = buildHostPipeline(pipelineParts);
 
   const app = createGatewayApp({
     config,
@@ -97,6 +117,7 @@ async function main(): Promise<void> {
     identityService,
     connectionRegistry,
     connectionProxy,
+    settings,
     tokenRouter,
     schemaCache,
     events,

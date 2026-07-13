@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useConfiguration, useHealth } from '../api/queries';
 import { OperatorKeyBar } from '../components/OperatorKeyBar';
+import { SecuritySettingsPanel } from '../components/SecuritySettings';
 import { jwkThumbprint, parseHostKey } from '../lib/agentCrypto';
 import { setOperatorKey, useOperatorKey } from '../lib/useOperatorKey';
 
@@ -68,6 +69,8 @@ export function SettingsView(): JSX.Element {
         )}
         {keyInfo.error && <div className="errorBox">{keyInfo.error}</div>}
       </div>
+
+      <SecuritySettingsPanel />
 
       <div className="card card-pad">
         <h2 className="cardTitle">Gateway</h2>
