@@ -62,6 +62,19 @@ export interface ToolSummary {
   schema_cached_at: string | null;
 }
 
+/** Operator-toggleable runtime security settings (`GET`/`PATCH /admin/config`). */
+export interface SecuritySettings {
+  rateLimit: { enabled: boolean; perIpPerMinute: number; registerPerHourPerIp: number };
+  ipFilter: { enabled: boolean; mode: 'allow' | 'deny'; entries: string[] };
+  jwks: { allowPrivateHosts: boolean };
+  dpop: { enabled: boolean };
+  mtls: { enabled: boolean };
+}
+
+export type SecuritySettingsPatch = {
+  [K in keyof SecuritySettings]?: Partial<SecuritySettings[K]>;
+};
+
 /** Token/latency telemetry snapshot from `GET /metrics`. */
 export interface MetricsSnapshot {
   counters: Record<string, number>;
@@ -94,6 +107,8 @@ export interface DashboardApi {
   listAudit(filter?: AuditFilter): Promise<AuditEntry[]>;
   listTools(): Promise<ToolSummary[]>;
   getMetrics(): Promise<MetricsSnapshot>;
+  getSecuritySettings(hostJwt: string): Promise<SecuritySettings>;
+  updateSecuritySettings(hostJwt: string, patch: SecuritySettingsPatch): Promise<SecuritySettings>;
 }
 
 /** Build a client bound to the gateway base path (defaults to `/api`, proxied to the gateway). */
@@ -226,6 +241,27 @@ export function createDashboardApi(baseUrl = '/api'): DashboardApi {
         throw new Error(`GET ${baseUrl}/metrics -> ${res.status}`);
       }
       return (await res.json()) as MetricsSnapshot;
+    },
+
+    async getSecuritySettings(hostJwt) {
+      const res = await fetch(`${baseUrl}/admin/config`, { headers: { authorization: `Bearer ${hostJwt}` } });
+      if (!res.ok) {
+        throw new Error(`GET ${baseUrl}/admin/config -> ${res.status}`);
+      }
+      return (await res.json()) as SecuritySettings;
+    },
+
+    async updateSecuritySettings(hostJwt, patch) {
+      const res = await fetch(`${baseUrl}/admin/config`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${hostJwt}`, 'content-type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const body = (await res.json().catch(() => ({}))) as SecuritySettings & { message?: string };
+      if (!res.ok) {
+        throw new Error(body.message ?? `PATCH admin/config -> ${res.status}`);
+      }
+      return body;
     },
   };
 }

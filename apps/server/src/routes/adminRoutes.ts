@@ -4,11 +4,13 @@ import type { AuditQuery, PageQuery, StorageDriver } from '@conduit/storage';
 import { Router } from 'express';
 import type { JwtPipeline } from '../auth/jwtPipeline.js';
 import type { ConnectionRegistryService } from '../connections/connectionRegistry.js';
-import { requireJwt } from '../server/authMiddleware.js';
+import { getAuth, requireJwt } from '../server/authMiddleware.js';
+import type { RuntimeSettingsPatch, RuntimeSettingsStore } from '../server/runtimeSettings.js';
 
 export interface AdminRoutesDeps {
   storage: StorageDriver;
   connectionRegistry: ConnectionRegistryService;
+  settings: RuntimeSettingsStore;
   hostPipeline: JwtPipeline;
 }
 
@@ -134,6 +136,31 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
           next_cursor: page.nextCursor,
           has_more: page.hasMore,
         });
+      })
+      .catch(next);
+  });
+
+  // Runtime security settings (operator-toggleable). Read is host-authorized; writes are audited.
+  router.get('/admin/config', requireJwt(deps.hostPipeline, 'host+jwt'), (_req, res) => {
+    res.json(deps.settings.get());
+  });
+
+  router.patch('/admin/config', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const updated = deps.settings.update((req.body ?? {}) as RuntimeSettingsPatch);
+    deps.storage.auditLog
+      .append({
+        agentId: null,
+        hostId: getAuth(res).host?.id ?? null,
+        eventType: 'admin.config.update',
+        capability: null,
+        connectionId: null,
+        operation: null,
+        outcome: 'success',
+        argsHash: null,
+        durationMs: null,
+      })
+      .then(() => {
+        res.json(updated);
       })
       .catch(next);
   });
