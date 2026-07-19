@@ -14,7 +14,8 @@
     "@conduit/core": "*",
     "@tanstack/react-query": "^5.51.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "simple-icons": "^16.26.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",

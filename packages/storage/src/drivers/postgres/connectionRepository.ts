@@ -1,10 +1,12 @@
 import type { Connection } from '@conduit/core';
 import type { Page, PageQuery } from '../../pagination.js';
-import type { ConnectionRepository, NewConnection } from '../../repositories.js';
+import type { ConnectionRepository, ConnectionUpdate, NewConnection } from '../../repositories.js';
 import type { Queryable } from './queryable.js';
 import { clampLimit, decodeCursor, encodeCursor } from './rowMappers.js';
 
-const COLS = 'id, name, platform, credential_encrypted, allowed_operations, created_at';
+const COLS =
+  'id, name, platform, credential_encrypted, allowed_operations, created_at, ' +
+  'last_test_ok, last_test_at, last_test_detail';
 
 type Row = {
   id: string;
@@ -13,6 +15,9 @@ type Row = {
   credential_encrypted: Buffer;
   allowed_operations: string[];
   created_at: Date;
+  last_test_ok: boolean | null;
+  last_test_at: Date | null;
+  last_test_detail: string | null;
 };
 
 function map(r: Row): Connection {
@@ -23,6 +28,9 @@ function map(r: Row): Connection {
     credentialEncrypted: new Uint8Array(r.credential_encrypted),
     allowedOperations: r.allowed_operations,
     createdAt: r.created_at,
+    lastTestOk: r.last_test_ok,
+    lastTestAt: r.last_test_at,
+    lastTestDetail: r.last_test_detail,
   };
 }
 
@@ -45,6 +53,43 @@ export class PostgresConnectionRepository implements ConnectionRepository {
   async findById(id: string): Promise<Connection | null> {
     const { rows } = await this.db().query<Row>(`SELECT ${COLS} FROM connections WHERE id = $1`, [id]);
     return rows[0] ? map(rows[0]) : null;
+  }
+
+  async update(id: string, patch: ConnectionUpdate): Promise<Connection | null> {
+    const sets: string[] = [];
+    const vals: unknown[] = [id];
+    let i = 2;
+    if (patch.name !== undefined) {
+      sets.push(`name = $${i++}`);
+      vals.push(patch.name);
+    }
+    if (patch.allowedOperations !== undefined) {
+      sets.push(`allowed_operations = $${i++}::text[]`);
+      vals.push(patch.allowedOperations);
+    }
+    if (patch.credentialEncrypted !== undefined) {
+      sets.push(`credential_encrypted = $${i++}`);
+      vals.push(Buffer.from(patch.credentialEncrypted));
+    }
+    if (sets.length === 0) {
+      return this.findById(id);
+    }
+    const { rows } = await this.db().query<Row>(
+      `UPDATE connections SET ${sets.join(', ')} WHERE id = $1 RETURNING ${COLS}`,
+      vals,
+    );
+    return rows[0] ? map(rows[0]) : null;
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db().query(`DELETE FROM connections WHERE id = $1`, [id]);
+  }
+
+  async recordTest(id: string, ok: boolean, detail: string, at: Date): Promise<void> {
+    await this.db().query(
+      `UPDATE connections SET last_test_ok = $2, last_test_at = $3, last_test_detail = $4 WHERE id = $1`,
+      [id, ok, at, detail],
+    );
   }
 
   async getEncryptedCredential(id: string): Promise<Uint8Array | null> {

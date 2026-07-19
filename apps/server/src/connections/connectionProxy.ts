@@ -38,6 +38,15 @@ export function createConnectionProxy(deps: ConnectionProxyDeps): ConnectionProx
       if (!connection) {
         throw new ConduitError(ErrorCode.invalidRequest, 'connection not found', 404);
       }
+      // Connection-level operation allowlist: a non-empty list bounds what ANY grant on this connection may
+      // execute (defense in depth over the per-grant operation). Empty = all operations permitted.
+      if (connection.allowedOperations.length > 0 && !connection.allowedOperations.includes(operation)) {
+        throw new ConduitError(
+          ErrorCode.capabilityNotGranted,
+          `operation "${operation}" is not in the allowed set for connection "${connection.name}"`,
+          403,
+        );
+      }
       const driver = connectors.get(connection.platform);
       if (!driver) {
         throw new ConduitError(ErrorCode.invalidRequest, `no driver for platform "${connection.platform}"`, 400);

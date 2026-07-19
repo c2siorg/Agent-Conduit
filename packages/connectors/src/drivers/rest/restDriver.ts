@@ -1,5 +1,6 @@
 import { ConduitError, ErrorCode } from '@conduit/core';
 import type {
+  ConnectorField,
   CredentialAuthMethod,
   ExecutionContext,
   ExecutionResult,
@@ -28,6 +29,13 @@ export class RestDriver implements PlatformDriver {
   ];
 
   readonly supportedAuthMethods: CredentialAuthMethod[] = ['apiKey', 'bearer', 'basic', 'customHeader'];
+
+  readonly credentialFields: ConnectorField[] = [
+    { key: 'baseUrl', label: 'Base URL', secret: false, required: true, placeholder: 'https://api.example.com' },
+    { key: 'token', label: 'Bearer token / API key', secret: true, required: false, help: 'Sent per the selected auth method.' },
+    { key: 'header', label: 'Custom header name (apiKey/customHeader)', secret: false, required: false, placeholder: 'x-api-key' },
+    { key: 'value', label: 'Custom header value', secret: true, required: false },
+  ];
 
   validateCredential(credential: PlatformCredential): Promise<boolean> {
     const baseUrl = credential.secret['baseUrl'] ?? credential.secret['base_url'];

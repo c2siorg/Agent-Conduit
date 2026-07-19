@@ -26,6 +26,9 @@ export interface ConnectionSummary {
   platform: string;
   allowed_operations: string[];
   created_at: string;
+  last_test_ok: boolean | null;
+  last_test_at: string | null;
+  last_test_detail: string | null;
 }
 
 export interface RegisterConnectionInput {
@@ -34,6 +37,21 @@ export interface RegisterConnectionInput {
   authMethod: string;
   secret: Record<string, string>;
   allowedOperations: string[];
+}
+
+export interface UpdateConnectionInput {
+  name?: string;
+  allowedOperations?: string[];
+  authMethod?: string;
+  /** Provide to rotate the stored secret; omit to leave it unchanged. */
+  secret?: Record<string, string>;
+}
+
+/** Result of `POST /connections/:id/test`. */
+export interface CredentialTestResult {
+  ok: boolean;
+  checked: 'structure' | 'live';
+  detail: string;
 }
 
 /** One audit entry, as returned by `GET /audit`. `args_hash` is a hash — raw args are never stored. */
@@ -75,6 +93,26 @@ export type SecuritySettingsPatch = {
   [K in keyof SecuritySettings]?: Partial<SecuritySettings[K]>;
 };
 
+/** One credential-form field for a connector. */
+export interface ConnectorField {
+  key: string;
+  label: string;
+  secret: boolean;
+  required: boolean;
+  placeholder?: string;
+  help?: string;
+}
+
+/** An available connector platform, as returned by `GET /connectors`. */
+export interface ConnectorInfo {
+  platform: string;
+  label: string;
+  auth_methods: string[];
+  docs_url: string | null;
+  fields: ConnectorField[];
+  operations: Array<{ name: string; description: string }>;
+}
+
 /** Token/latency telemetry snapshot from `GET /metrics`. */
 export interface MetricsSnapshot {
   counters: Record<string, number>;
@@ -104,8 +142,12 @@ export interface DashboardApi {
   updateAgent(hostJwt: string, agentId: string, name: string, description: string): Promise<void>;
   listConnections(): Promise<ConnectionSummary[]>;
   registerConnection(hostJwt: string, input: RegisterConnectionInput): Promise<{ connection_id: string }>;
+  updateConnection(hostJwt: string, id: string, patch: UpdateConnectionInput): Promise<void>;
+  deleteConnection(hostJwt: string, id: string): Promise<void>;
+  testConnection(hostJwt: string, id: string): Promise<CredentialTestResult>;
   listAudit(filter?: AuditFilter): Promise<AuditEntry[]>;
   listTools(): Promise<ToolSummary[]>;
+  listConnectors(): Promise<ConnectorInfo[]>;
   getMetrics(): Promise<MetricsSnapshot>;
   getSecuritySettings(hostJwt: string): Promise<SecuritySettings>;
   updateSecuritySettings(hostJwt: string, patch: SecuritySettingsPatch): Promise<SecuritySettings>;
@@ -233,6 +275,54 @@ export function createDashboardApi(baseUrl = '/api'): DashboardApi {
         throw new Error(`GET ${baseUrl}/tools -> ${res.status}`);
       }
       return ((await res.json()) as { tools: ToolSummary[] }).tools;
+    },
+
+    async updateConnection(hostJwt, id, patch) {
+      const res = await fetch(`${baseUrl}/connections/${id}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${hostJwt}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.allowedOperations !== undefined ? { allowed_operations: patch.allowedOperations } : {}),
+          ...(patch.authMethod !== undefined ? { auth_method: patch.authMethod } : {}),
+          ...(patch.secret !== undefined ? { secret: patch.secret } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `update connection failed (${res.status})`);
+      }
+    },
+
+    async deleteConnection(hostJwt, id) {
+      const res = await fetch(`${baseUrl}/connections/${id}`, {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${hostJwt}` },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `delete connection failed (${res.status})`);
+      }
+    },
+
+    async testConnection(hostJwt, id) {
+      const res = await fetch(`${baseUrl}/connections/${id}/test`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${hostJwt}` },
+      });
+      const body = (await res.json().catch(() => ({}))) as CredentialTestResult & { message?: string };
+      if (!res.ok) {
+        throw new Error(body.message ?? `test failed (${res.status})`);
+      }
+      return body;
+    },
+
+    async listConnectors() {
+      const res = await fetch(`${baseUrl}/connectors`);
+      if (!res.ok) {
+        throw new Error(`GET ${baseUrl}/connectors -> ${res.status}`);
+      }
+      return ((await res.json()) as { connectors: ConnectorInfo[] }).connectors;
     },
 
     async getMetrics() {

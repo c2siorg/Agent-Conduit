@@ -6,6 +6,7 @@ import {
   type AuditEntry,
   type AuditFilter,
   type ConnectionSummary,
+  type ConnectorInfo,
   type MetricsSnapshot,
   type ToolSummary,
 } from './client';
@@ -28,6 +29,11 @@ export function useAgents(): UseQueryResult<AgentSummary[]> {
     queryFn: () => api.listAgents(),
     refetchInterval: 5000,
   });
+}
+
+/** Available connector platforms (drives the register-connection dropdown). */
+export function useConnectors(): UseQueryResult<ConnectorInfo[]> {
+  return useQuery({ queryKey: ['connectors'], queryFn: () => api.listConnectors(), staleTime: 300000 });
 }
 
 /** Connection vault entries (no secrets). */

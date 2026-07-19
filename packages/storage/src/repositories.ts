@@ -139,6 +139,14 @@ export interface CapabilityGrantRepository {
   revokeAllForAgent(agentId: string): Promise<void>;
 }
 
+/** Fields updatable on a connection (any subset). */
+export interface ConnectionUpdate {
+  name?: string;
+  allowedOperations?: string[];
+  /** New encrypted credential (already AES-256-GCM ciphertext) when rotating the secret. */
+  credentialEncrypted?: Uint8Array;
+}
+
 /** Connections (admin-registered credentials). */
 export interface ConnectionRepository {
   create(input: NewConnection): Promise<Connection>;
@@ -146,6 +154,11 @@ export interface ConnectionRepository {
   list(page: PageQuery): Promise<Page<Connection>>;
   /** Returns ciphertext only — decryption happens in the application layer. */
   getEncryptedCredential(id: string): Promise<Uint8Array | null>;
+  /** Update name / allowed operations / rotate the encrypted credential. */
+  update(id: string, patch: ConnectionUpdate): Promise<Connection | null>;
+  delete(id: string): Promise<void>;
+  /** Persist the result of the last credential test (for at-a-glance health). */
+  recordTest(id: string, ok: boolean, detail: string, at: Date): Promise<void>;
 }
 
 /** Connection grants. */

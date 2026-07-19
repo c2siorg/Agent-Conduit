@@ -1,5 +1,6 @@
 import { ConduitError, ErrorCode } from '@conduit/core';
 import type {
+  ConnectorField,
   CredentialAuthMethod,
   ExecutionContext,
   ExecutionResult,
@@ -21,6 +22,10 @@ export class MockDriver implements PlatformDriver {
   ];
 
   readonly supportedAuthMethods: CredentialAuthMethod[] = ['apiKey', 'bearer', 'basic', 'customHeader'];
+
+  readonly credentialFields: ConnectorField[] = [
+    { key: 'token', label: 'Token (any value)', secret: true, required: true, placeholder: 'any' },
+  ];
 
   validateCredential(_credential: PlatformCredential): Promise<boolean> {
     return Promise.resolve(true);

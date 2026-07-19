@@ -666,9 +666,158 @@ body {
   font-size: 12px;
   font-weight: 600;
 }
+
+/* Connector picker + cards */
+.pickerSearch {
+  width: 100%;
+  max-width: 420px;
+  margin-bottom: var(--space-4);
+}
+.connectorGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+.connectorCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s, transform 0.06s;
+}
+.connectorCard:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.connectorCardBody {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.connectorCardName {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.connectorCardMeta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.connectorAvatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.selectedConnector {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.selectedConnector h2 {
+  margin: 0;
+}
+.platformCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Operation chips */
+.opChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+.opChip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--mono, monospace);
+  cursor: pointer;
+}
+.opChip:hover {
+  border-color: var(--accent);
+}
+.opChip.on {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.opAdd {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  max-width: 420px;
+}
+.opAdd input {
+  flex: 1;
+}
 .vaultBadge .icon {
   width: 14px;
   height: 14px;
+}
+.testBadge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: default;
+}
+.testBadge.ok {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+.testBadge.bad {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+.testAge {
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+/* Structured credential fields */
+.fieldSet {
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  max-width: 720px;
+}
+.fieldSetHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: var(--space-3);
+}
+.fieldHelp {
+  display: block;
+  font-size: 11px;
+  margin-top: var(--space-1);
+}
+.selectedConnectorActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
 }
 
 /* Settings + cards */
