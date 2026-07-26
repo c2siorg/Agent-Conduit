@@ -183,6 +183,14 @@ describe('capability execution end to end (Sprint 2-3 spine)', () => {
     assert.equal(((await res.json()) as { error: string }).error, 'capability_not_granted');
   });
 
+  it('enforces the connection operation allowlist (403 when the operation is not permitted)', async () => {
+    // The connection was registered with allowed_operations: ['echo']; grant a capability using another op.
+    await post('/agent/grant', await hostJwt(), { agent_id: agentId, capability: 'blocked', connection_id: connectionId, operation: 'delete', constraints: {} });
+    const res = await post('/capability/execute', await agentJwt(), { capability: 'blocked', args: {} });
+    assert.equal(res.status, 403);
+    assert.equal(((await res.json()) as { error: string }).error, 'capability_not_granted');
+  });
+
   it('writes an audit entry with an args hash, never raw args', async () => {
     const res = await fetch(`${base}/audit`);
     const body = (await res.json()) as { entries: Array<{ capability: string; outcome: string; args_hash: string | null }> };

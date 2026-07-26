@@ -11,6 +11,10 @@ export interface Connection {
   credentialEncrypted: Uint8Array;
   allowedOperations: string[];
   createdAt: Date;
+  /** Result of the last credential test (null if never tested). */
+  lastTestOk: boolean | null;
+  lastTestAt: Date | null;
+  lastTestDetail: string | null;
 }
 
 /** Binds an agent to a connection with a scoped operation set, constraints, and rate limit. */

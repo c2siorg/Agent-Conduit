@@ -76,7 +76,7 @@ async function main(): Promise<void> {
   );
   const connectors = createConnectorRegistry(config.connectors.enabled);
   const connectionProxy = createConnectionProxy({ storage, cipher, connectors });
-  const connectionRegistry = createConnectionRegistryService(storage, cipher);
+  const connectionRegistry = createConnectionRegistryService(storage, cipher, connectors);
 
   const adapters = createAdapterRegistry();
   const schemaCache = createSchemaCache(SCHEMA_CACHE_TTL_SECONDS);
@@ -117,6 +117,7 @@ async function main(): Promise<void> {
     identityService,
     connectionRegistry,
     connectionProxy,
+    connectors,
     settings,
     tokenRouter,
     schemaCache,

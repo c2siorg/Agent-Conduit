@@ -1,3 +1,4 @@
+import { createConnectorRegistry, type ConnectorRegistry } from '@conduit/connectors';
 import type { StorageDriver } from '@conduit/storage';
 import express, { type Express, type Request } from 'express';
 import helmet from 'helmet';
@@ -42,6 +43,8 @@ export interface GatewayAppDeps {
   identityService: IdentityService;
   connectionRegistry: ConnectionRegistryService;
   connectionProxy: ConnectionProxy;
+  /** Connector registry, used to list available platforms. Defaults to the full bundled set if omitted. */
+  connectors?: ConnectorRegistry;
   /** Operator-toggleable runtime security settings; a permissive default is used if omitted. */
   settings?: RuntimeSettingsStore;
   tokenRouter: TokenRouter;
@@ -99,6 +102,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Express {
     adminRoutes({
       storage: deps.storage,
       connectionRegistry: deps.connectionRegistry,
+      connectors: deps.connectors ?? createConnectorRegistry(),
       settings,
       hostPipeline: deps.hostPipeline,
     }),

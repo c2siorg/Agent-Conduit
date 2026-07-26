@@ -1,5 +1,6 @@
 import { ConduitError, ErrorCode } from '@conduit/core';
 import type { AuditOutcome } from '@conduit/core';
+import type { ConnectorRegistry } from '@conduit/connectors';
 import type { AuditQuery, PageQuery, StorageDriver } from '@conduit/storage';
 import { Router } from 'express';
 import type { JwtPipeline } from '../auth/jwtPipeline.js';
@@ -10,6 +11,7 @@ import type { RuntimeSettingsPatch, RuntimeSettingsStore } from '../server/runti
 export interface AdminRoutesDeps {
   storage: StorageDriver;
   connectionRegistry: ConnectionRegistryService;
+  connectors: ConnectorRegistry;
   settings: RuntimeSettingsStore;
   hostPipeline: JwtPipeline;
 }
@@ -80,6 +82,48 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
       .catch(next);
   });
 
+  // Update a connection (name / allowed operations / rotate secret). Host-authorized.
+  router.patch('/connections/:id', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const id = req.params['id'] ?? '';
+    const body = (req.body ?? {}) as {
+      name?: string;
+      allowed_operations?: string[];
+      auth_method?: string;
+      secret?: Record<string, string>;
+    };
+    deps.connectionRegistry
+      .updateConnection(id, {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.allowed_operations !== undefined ? { allowedOperations: body.allowed_operations } : {}),
+        ...(body.auth_method !== undefined ? { authMethod: body.auth_method } : {}),
+        ...(body.secret !== undefined ? { secret: body.secret } : {}),
+      })
+      .then((c) => {
+        res.json({ connection_id: c.id, name: c.name, platform: c.platform, allowed_operations: c.allowedOperations });
+      })
+      .catch(next);
+  });
+
+  // Delete a connection. Host-authorized. Grants referencing it will fail at execute (connection not found).
+  router.delete('/connections/:id', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    deps.connectionRegistry
+      .deleteConnection(req.params['id'] ?? '')
+      .then(() => {
+        res.json({ deleted: true });
+      })
+      .catch(next);
+  });
+
+  // Test a connection's stored credential (structural + live probe where supported). Host-authorized.
+  router.post('/connections/:id/test', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    deps.connectionRegistry
+      .testConnection(req.params['id'] ?? '')
+      .then((result) => {
+        res.json(result);
+      })
+      .catch(next);
+  });
+
   // Connection vault status - credential VALUES are never included.
   router.get('/connections', (_req, res, next) => {
     deps.connectionRegistry
@@ -92,6 +136,9 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
             platform: c.platform,
             allowed_operations: c.allowedOperations,
             created_at: c.createdAt,
+            last_test_ok: c.lastTestOk,
+            last_test_at: c.lastTestAt,
+            last_test_detail: c.lastTestDetail,
           })),
         });
       })
@@ -138,6 +185,24 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
         });
       })
       .catch(next);
+  });
+
+  // Available connectors (platform ids + labels + operations). No secrets; drives the dashboard dropdown
+  // so the UI always reflects exactly what the gateway supports.
+  router.get('/connectors', (_req, res) => {
+    res.json({
+      connectors: deps.connectors
+        .list()
+        .map((d) => ({
+          platform: d.platform,
+          label: d.label ?? d.platform,
+          auth_methods: d.supportedAuthMethods,
+          docs_url: d.docsUrl ?? null,
+          fields: d.credentialFields ?? [],
+          operations: d.supportedOperations.map((o) => ({ name: o.name, description: o.description })),
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    });
   });
 
   // Runtime security settings (operator-toggleable). Read is host-authorized; writes are audited.

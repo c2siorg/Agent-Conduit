@@ -1,6 +1,8 @@
 import { ConduitError, ErrorCode } from '@conduit/core';
 import type {
+  ConnectorField,
   CredentialAuthMethod,
+  CredentialTest,
   ExecutionContext,
   ExecutionResult,
   OperationDescriptor,
@@ -39,8 +41,35 @@ export class SlackDriver implements PlatformDriver {
 
   readonly supportedAuthMethods: CredentialAuthMethod[] = ['bearer'];
 
+  readonly docsUrl = 'https://api.slack.com/apps';
+  readonly credentialFields: ConnectorField[] = [
+    { key: 'token', label: 'Bot token', secret: true, required: true, placeholder: 'xoxb-...', help: 'Bot User OAuth Token from your Slack app.' },
+  ];
+
   validateCredential(credential: PlatformCredential): Promise<boolean> {
     return Promise.resolve(Boolean(credential.secret['token']));
+  }
+
+  /** Live test via Slack's dedicated `auth.test` endpoint. */
+  async testCredential(credential: PlatformCredential): Promise<CredentialTest> {
+    const token = credential.secret['token'];
+    if (!token) {
+      return { ok: false, checked: 'structure', detail: 'missing bot token' };
+    }
+    try {
+      const res = await fetch(`${SLACK_API_BASE}/auth.test`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const data = (await res.json().catch(() => ({ ok: false }))) as { ok?: boolean; error?: string; team?: string };
+      return {
+        ok: Boolean(data.ok),
+        checked: 'live',
+        detail: data.ok ? `authenticated${data.team ? ` as ${data.team}` : ''}` : `auth.test failed: ${data.error ?? 'unknown'}`,
+      };
+    } catch (err) {
+      return { ok: false, checked: 'live', detail: err instanceof Error ? err.message : 'auth.test failed' };
+    }
   }
 
   async execute(ctx: ExecutionContext): Promise<ExecutionResult> {
