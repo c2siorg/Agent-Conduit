@@ -48,6 +48,37 @@ const PATHS: Record<string, JSX.Element> = {
       <path d="M12 2.5v2.2M12 19.3v2.2M21.5 12h-2.2M4.7 12H2.5M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6M18.7 18.7l-1.6-1.6M6.9 6.9 5.3 5.3" />
     </>
   ),
+  topology: (
+    <>
+      <circle cx="5" cy="12" r="2.4" />
+      <circle cx="19" cy="6" r="2.4" />
+      <circle cx="19" cy="18" r="2.4" />
+      <line x1="7.2" y1="11" x2="16.8" y2="7" />
+      <line x1="7.2" y1="13" x2="16.8" y2="17" />
+    </>
+  ),
+  wiring: (
+    <>
+      <rect x="3" y="9" width="5" height="6" rx="1" />
+      <rect x="16" y="4" width="5" height="5" rx="1" />
+      <rect x="16" y="15" width="5" height="5" rx="1" />
+      <path d="M8 12h4M12 12V6.5h4M12 12v5.5h4" />
+    </>
+  ),
+  policy: (
+    <>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <line x1="8" y1="8" x2="16" y2="8" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+      <line x1="8" y1="16" x2="13" y2="16" />
+    </>
+  ),
+  compliance: (
+    <>
+      <path d="M12 3l7 2.5v5.2c0 4.2-2.9 7.2-7 8.3-4.1-1.1-7-4.1-7-8.3V5.5L12 3z" />
+      <path d="M9 12l2 2 4-4" />
+    </>
+  ),
   getStarted: (
     <>
       <path d="M5 19c0-6 3.5-12 9.5-12 0 0 2 0 3.5.5.5 1.5.5 3.5.5 3.5C18 17 12 19 5 19z" />

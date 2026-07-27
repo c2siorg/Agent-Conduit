@@ -31,6 +31,11 @@ export function errorHandler(events?: SecurityEventStream): ErrorRequestHandler 
           detail: { code: err.code, path: req.path, message: err.message },
         });
       }
+      // Surface Retry-After for rate-limit denials that carry it (e.g. the per-connection limiter).
+      const retryAfter = err.fields['retry_after'];
+      if (typeof retryAfter === 'number' && retryAfter > 0) {
+        res.setHeader('Retry-After', String(retryAfter));
+      }
       res.status(err.httpStatus).json(err.toEnvelope());
       return;
     }

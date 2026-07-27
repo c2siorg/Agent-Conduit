@@ -5,6 +5,9 @@ import type { AuditQuery, PageQuery, StorageDriver } from '@conduit/storage';
 import { Router } from 'express';
 import type { JwtPipeline } from '../auth/jwtPipeline.js';
 import type { ConnectionRegistryService } from '../connections/connectionRegistry.js';
+import type { ConduitConfig } from '../config/configSchema.js';
+import { buildComplianceReport, complianceSummary } from '../observability/compliance.js';
+import { riskLevel, riskRank } from '../policy/risk.js';
 import { getAuth, requireJwt } from '../server/authMiddleware.js';
 import type { RuntimeSettingsPatch, RuntimeSettingsStore } from '../server/runtimeSettings.js';
 
@@ -13,6 +16,7 @@ export interface AdminRoutesDeps {
   connectionRegistry: ConnectionRegistryService;
   connectors: ConnectorRegistry;
   settings: RuntimeSettingsStore;
+  config: ConduitConfig;
   hostPipeline: JwtPipeline;
 }
 
@@ -175,6 +179,7 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
             capability: e.capability,
             connection_id: e.connectionId,
             operation: e.operation,
+            task_id: e.taskId,
             outcome: e.outcome,
             args_hash: e.argsHash,
             duration_ms: e.durationMs,
@@ -185,6 +190,124 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
         });
       })
       .catch(next);
+  });
+
+  // Per-agent blast radius (summed risk of active grants). Drives the risk column on the agents list.
+  router.get('/agents/risk', (_req, res, next) => {
+    deps.storage.agents
+      .list({ limit: 500 })
+      .then(async (page) => {
+        const rows = await Promise.all(
+          page.items.map(async (a) => {
+            const grants = await deps.storage.capabilityGrants.findForAgent(a.id);
+            const active = grants.filter((g) => g.status === 'active');
+            const total = active.reduce((s, g) => s + riskRank(riskLevel(g.operation, g.capability)), 0);
+            const level = total >= 8 ? 'high' : total >= 3 ? 'med' : 'low';
+            return { agent_id: a.id, active_grants: active.length, blast_radius: total, level };
+          }),
+        );
+        res.json({ agents: rows });
+      })
+      .catch(next);
+  });
+
+  // Agent ↔ connector authorizations (the "wiring" the dashboard drag-and-drop manages). No secrets.
+  router.get('/agents/:id/connections', (req, res, next) => {
+    deps.connectionRegistry
+      .listAgentConnections(req.params['id'] ?? '')
+      .then((items) => {
+        res.json({
+          connections: items.map((g) => ({
+            connection_id: g.connectionId,
+            name: g.name,
+            platform: g.platform,
+            allowed_operations: g.allowedOperations,
+            rate_limit: g.rateLimit,
+          })),
+        });
+      })
+      .catch(next);
+  });
+
+  router.post('/agents/:id/connections', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    const body = (req.body ?? {}) as { connection_id?: string; allowed_operations?: string[]; rate_limit?: number | null };
+    if (!body.connection_id) {
+      next(new ConduitError(ErrorCode.invalidRequest, 'connection_id is required', 400));
+      return;
+    }
+    deps.connectionRegistry
+      .attachConnection(
+        host.id,
+        req.params['id'] ?? '',
+        body.connection_id,
+        Array.isArray(body.allowed_operations) ? body.allowed_operations : [],
+        typeof body.rate_limit === 'number' ? body.rate_limit : null,
+      )
+      .then((g) => {
+        res.status(201).json({ connection_id: g.connectionId, allowed_operations: g.allowedOperations, rate_limit: g.rateLimit });
+      })
+      .catch(next);
+  });
+
+  router.delete('/agents/:id/connections/:connectionId', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    deps.connectionRegistry
+      .detachConnection(host.id, req.params['id'] ?? '', req.params['connectionId'] ?? '')
+      .then(() => {
+        res.json({ detached: true });
+      })
+      .catch(next);
+  });
+
+  // Grants for one agent (drives the topology / blast-radius view). No secrets. Each grant is flagged as
+  // `blocked` (a "broken wire") when the agent has connector authorizations but this grant's connection
+  // isn't authorized (or its operation isn't permitted) — i.e. the two grant layers disagree and the
+  // capability would 403 at execute.
+  router.get('/agents/:id/grants', (req, res, next) => {
+    const agentId = req.params['id'] ?? '';
+    Promise.all([
+      deps.storage.capabilityGrants.findForAgent(agentId),
+      deps.storage.connectionGrants.listByAgent(agentId),
+    ])
+      .then(([grants, connGrants]) => {
+        const hasConnAuthz = connGrants.length > 0;
+        res.json({
+          grants: grants.map((g) => {
+            let blocked = false;
+            if (hasConnAuthz && g.connectionId) {
+              const authz = connGrants.find((c) => c.connectionId === g.connectionId);
+              blocked =
+                !authz ||
+                (authz.allowedOperations.length > 0 && g.operation != null && !authz.allowedOperations.includes(g.operation));
+            }
+            return {
+              capability: g.capability,
+              connection_id: g.connectionId,
+              operation: g.operation,
+              task_id: g.taskId,
+              status: g.status,
+              risk: riskLevel(g.operation, g.capability),
+              blocked,
+            };
+          }),
+        });
+      })
+      .catch(next);
+  });
+
+  // Compliance posture: control catalog mapped to Conduit's live enforcement.
+  router.get('/compliance', (_req, res) => {
+    const domains = buildComplianceReport(deps.settings.get(), deps.config);
+    res.json({ summary: complianceSummary(domains), domains });
   });
 
   // Available connectors (platform ids + labels + operations). No secrets; drives the dashboard dropdown
@@ -220,6 +343,7 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
         capability: null,
         connectionId: null,
         operation: null,
+        taskId: null,
         outcome: 'success',
         argsHash: null,
         durationMs: null,

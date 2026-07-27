@@ -40,6 +40,8 @@ export interface CapabilityGrant {
   /** Conduit mapping: which connection + operation this capability invokes (Conduit extension). */
   connectionId: string | null;
   operation: string | null;
+  /** Task this grant belongs to (Conduit extension); null for standing grants. */
+  taskId: string | null;
   status: GrantStatus;
   constraints: Record<string, Constraint>;
   grantedBy: string | null;

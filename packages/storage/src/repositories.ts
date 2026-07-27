@@ -14,6 +14,8 @@ import type {
   HostState,
   Jwk,
   SecurityEvent,
+  Task,
+  TaskStatus,
   Tool,
 } from '@conduit/core';
 import type { Page, PageQuery } from './pagination.js';
@@ -45,9 +47,18 @@ export interface NewCapabilityGrant {
   capability: string;
   connectionId: string | null;
   operation: string | null;
+  taskId: string | null;
   status: GrantStatus;
   constraints: Record<string, Constraint>;
   grantedBy: string | null;
+  expiresAt: Date | null;
+}
+
+export interface NewTask {
+  agentId: string;
+  hostId: string;
+  name: string;
+  purpose: string | null;
   expiresAt: Date | null;
 }
 
@@ -72,6 +83,7 @@ export interface NewAuditEntry {
   capability: string | null;
   connectionId: string | null;
   operation: string | null;
+  taskId: string | null;
   outcome: AuditOutcome;
   argsHash: string | null;
   durationMs: number | null;
@@ -137,6 +149,16 @@ export interface CapabilityGrantRepository {
   findActive(agentId: string, capability: string): Promise<CapabilityGrant | null>;
   setStatus(id: string, status: GrantStatus, deniedBy: string | null, reason: string | null): Promise<void>;
   revokeAllForAgent(agentId: string): Promise<void>;
+  /** Deny all grants belonging to a task (task completion / expiry -> zero standing access). */
+  revokeByTask(taskId: string): Promise<void>;
+}
+
+/** Tasks — time-boxed capability-grant bundles (Conduit extension). */
+export interface TaskRepository {
+  create(input: NewTask): Promise<Task>;
+  findById(id: string): Promise<Task | null>;
+  list(page: PageQuery): Promise<Page<Task>>;
+  setStatus(id: string, status: TaskStatus, completedAt: Date | null): Promise<void>;
 }
 
 /** Fields updatable on a connection (any subset). */
@@ -161,10 +183,15 @@ export interface ConnectionRepository {
   recordTest(id: string, ok: boolean, detail: string, at: Date): Promise<void>;
 }
 
-/** Connection grants. */
+/** Connection grants — which connectors an agent is authorized to use. */
 export interface ConnectionGrantRepository {
+  /** Attach (or update) a connector authorization for an agent — idempotent on (agent, connection). */
   upsert(grant: Omit<ConnectionGrant, 'id'>): Promise<ConnectionGrant>;
   findForAgent(agentId: string, connectionId: string): Promise<ConnectionGrant | null>;
+  /** All connector authorizations for an agent (drives the wiring UI + execute-time enforcement). */
+  listByAgent(agentId: string): Promise<ConnectionGrant[]>;
+  /** Detach a connector from an agent. */
+  delete(agentId: string, connectionId: string): Promise<void>;
 }
 
 /** Tools + per-tool schema cache. */

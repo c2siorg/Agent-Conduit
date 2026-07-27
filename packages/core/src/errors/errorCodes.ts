@@ -10,6 +10,8 @@ export const ErrorCode = {
   unknownConstraintOperator: 'unknown_constraint_operator',
   capabilityNotGranted: 'capability_not_granted',
   constraintViolated: 'constraint_violated',
+  policyDenied: 'policy_denied',
+  approvalRequired: 'approval_required',
   limitExceeded: 'limit_exceeded',
   agentRevoked: 'agent_revoked',
   agentExpired: 'agent_expired',

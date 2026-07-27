@@ -16,6 +16,7 @@ import { createLogger } from './observability/logger.js';
 import { createMetrics } from './observability/metrics.js';
 import { createRuntimeSettings } from './server/runtimeSettings.js';
 import { createSecurityEventStream } from './observability/securityEventStream.js';
+import { createPolicyEngine } from './policy/policyEngine.js';
 import { createSchemaCache } from './router/schemaCache.js';
 import { createTokenRouter } from './router/tokenRouter.js';
 import { createGatewayApp } from './server/gatewayApp.js';
@@ -71,11 +72,26 @@ async function main(): Promise<void> {
     issuer: config.server.baseUrl,
   });
 
+  // Operator-toggleable runtime security settings, seeded from static config (authoritative on restart).
+  const settings = createRuntimeSettings({
+    rateLimit: {
+      enabled: true,
+      perIpPerMinute: config.security.rateLimits.perIpPerMinute,
+      registerPerHourPerIp: config.security.rateLimits.unknownHostRegistrationPerHourPerIp,
+    },
+    ipFilter: { enabled: false, mode: 'deny', entries: [] },
+    jwks: { allowPrivateHosts: process.env['CONDUIT_JWKS_ALLOW_PRIVATE'] === 'true' },
+    dpop: { enabled: config.security.dpop.enabled },
+    mtls: { enabled: config.security.mtls.enabled },
+    policy: { enabled: false, defaultEffect: 'allow', rules: [] },
+  });
+
   const cipher = createCredentialCipher(
     resolveMasterKey(config.crypto.masterKey.envVar ?? 'CONDUIT_MASTER_KEY'),
   );
   const connectors = createConnectorRegistry(config.connectors.enabled);
-  const connectionProxy = createConnectionProxy({ storage, cipher, connectors });
+  const policyEngine = createPolicyEngine(() => settings.get().policy);
+  const connectionProxy = createConnectionProxy({ storage, cipher, connectors, policy: policyEngine });
   const connectionRegistry = createConnectionRegistryService(storage, cipher, connectors);
 
   const adapters = createAdapterRegistry();
@@ -89,19 +105,6 @@ async function main(): Promise<void> {
     clockSkewSeconds: config.security.jwt.clockSkewSeconds,
     jtiCacheWindowSeconds: config.security.jwt.jtiCacheWindowSeconds,
   };
-  // Operator-toggleable runtime security settings, seeded from static config (authoritative on restart).
-  const settings = createRuntimeSettings({
-    rateLimit: {
-      enabled: true,
-      perIpPerMinute: config.security.rateLimits.perIpPerMinute,
-      registerPerHourPerIp: config.security.rateLimits.unknownHostRegistrationPerHourPerIp,
-    },
-    ipFilter: { enabled: false, mode: 'deny', entries: [] },
-    jwks: { allowPrivateHosts: process.env['CONDUIT_JWKS_ALLOW_PRIVATE'] === 'true' },
-    dpop: { enabled: config.security.dpop.enabled },
-    mtls: { enabled: config.security.mtls.enabled },
-  });
-
   // SSRF-hardened JWKS resolver (§8.12); the allow-private toggle is read live from runtime settings.
   const jwksResolver = createJwksResolver({
     allowPrivateHosts: () => settings.get().jwks.allowPrivateHosts,

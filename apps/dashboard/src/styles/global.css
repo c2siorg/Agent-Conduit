@@ -788,6 +788,217 @@ body {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 16%, transparent);
 }
+.testBadge:not(.ok):not(.bad) {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+
+/* Agent access wiring (drag & drop) */
+.wiring {
+  display: grid;
+  grid-template-columns: 220px 140px 1fr;
+  align-items: stretch;
+  gap: 0;
+  margin: var(--space-4) 0;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius, 8px);
+  padding: var(--space-4);
+  transition: border-color 0.15s, background 0.15s;
+}
+.wiringDrag {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.wireAgentCol {
+  display: flex;
+  align-items: center;
+}
+.wireAgentNode {
+  width: 100%;
+  border: 1px solid var(--accent);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius, 8px);
+  padding: var(--space-3);
+  background: var(--surface);
+}
+.wireAgentBadge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: var(--space-1);
+}
+.wireSvg {
+  align-self: stretch;
+  overflow: visible;
+}
+.wirePath {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  opacity: 0.7;
+}
+.wireDot {
+  fill: var(--accent);
+}
+.wireConnCol {
+  display: flex;
+  flex-direction: column;
+  gap: 12px; /* ROW_H (76) = card height (~64) + gap (12) */
+  justify-content: center;
+}
+.wireDropHint {
+  color: var(--text-muted);
+  font-size: 13px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius, 8px);
+  padding: var(--space-4);
+  text-align: center;
+}
+.wireConnCard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  background: var(--surface);
+  padding: var(--space-2) var(--space-3);
+}
+.wireConnHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.wireDetach {
+  margin-left: auto;
+}
+.wireConnBody {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  flex-wrap: wrap;
+}
+.wireRate {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  margin-left: auto;
+}
+.wireRate input {
+  width: 60px;
+}
+.wirePalette {
+  margin-top: var(--space-4);
+}
+.paletteGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-2);
+}
+.paletteCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  background: var(--surface);
+  cursor: grab;
+}
+.paletteCard:hover {
+  border-color: var(--accent);
+}
+.paletteCard:active {
+  cursor: grabbing;
+}
+.paletteCard:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.paletteAttach {
+  margin-left: auto;
+}
+
+/* Restrict-operations segmented control */
+.opsControl {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.segBtn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.segBtn.on {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--text);
+}
+
+/* Toasts */
+.toaster {
+  position: fixed;
+  bottom: var(--space-5);
+  right: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 1000;
+  max-width: 360px;
+}
+.toast {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius, 8px);
+  border: 1px solid var(--border);
+  background: var(--surface-2, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: var(--shadow, 0 6px 20px rgba(0, 0, 0, 0.35));
+  cursor: pointer;
+  animation: toastIn 0.16s ease-out;
+}
+.toast-success {
+  border-left: 3px solid var(--ok);
+}
+.toast-error {
+  border-left: 3px solid var(--danger);
+}
+.toast-info {
+  border-left: 3px solid var(--accent);
+}
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Policy rule form grid */
+.ruleForm {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.ruleForm .field {
+  margin-bottom: 0;
+}
 .testAge {
   opacity: 0.7;
   font-weight: 400;
@@ -818,6 +1029,159 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-4);
+}
+
+/* Live security feed */
+.feed {
+  padding: var(--space-3) var(--space-4);
+  max-height: 340px;
+  overflow: auto;
+}
+.feedEmpty {
+  font-size: 12px;
+}
+.feedRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.feedLabel {
+  flex: 1;
+  font-weight: 600;
+}
+.feedPath {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.feedTime {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.sevDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.sev-high {
+  background: var(--danger);
+}
+.sev-med {
+  background: var(--warn);
+}
+.sev-low {
+  background: var(--text-muted);
+}
+
+/* Risk colors (topology + badges) */
+.risk-high,
+.ctrl-gap-fg {
+  color: var(--danger);
+}
+.risk-med,
+.ctrl-partial-fg {
+  color: var(--warn);
+}
+.risk-low,
+.ctrl-met-fg {
+  color: var(--ok);
+}
+.riskDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.risk-bg-high {
+  background: var(--danger);
+}
+.risk-bg-med {
+  background: var(--warn);
+}
+.risk-bg-low {
+  background: var(--ok);
+}
+.risk-border-high {
+  border-left: 3px solid var(--danger);
+}
+.risk-border-med {
+  border-left: 3px solid var(--warn);
+}
+.risk-border-low {
+  border-left: 3px solid var(--ok);
+}
+
+/* Topology columns */
+.topology {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1fr;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  align-items: start;
+}
+.topoCol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.topoColHead {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+.topoNode {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  background: var(--surface);
+}
+.agentNode {
+  border-left: 3px solid var(--accent);
+}
+.capBlocked {
+  border-left-color: var(--danger) !important;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+.brokenWire {
+  margin-left: var(--space-2);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+/* Compliance chips */
+.complianceDomain {
+  margin-top: var(--space-4);
+}
+.complianceDomain .registry td {
+  vertical-align: top;
+}
+.ctrlChip {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.ctrl-met {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+.ctrl-partial {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+.ctrl-gap {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
 }
 
 /* Settings + cards */

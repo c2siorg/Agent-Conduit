@@ -77,6 +77,7 @@ export function createTokenRouter(deps: TokenRouterDeps): TokenRouter {
         capability: toolName,
         connectionId: null,
         operation: null,
+        taskId: null,
         outcome: 'success',
         argsHash: null,
         durationMs: null,

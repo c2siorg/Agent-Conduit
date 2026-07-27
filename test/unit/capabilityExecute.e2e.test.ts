@@ -83,6 +83,7 @@ function inMemoryStorage() {
       query: async () => ({ items: [...audit].reverse(), hasMore: false, nextCursor: null }),
       recordSecurityEvent: async () => {},
     },
+    connectionGrants: { listByAgent: async () => [], upsert: async (g) => g, findForAgent: async () => null, delete: async () => {} },
     jtiCache: { put: async (j: string) => (seen.has(j) ? false : (seen.add(j), true)) },
     transaction: async (fn: (tx: any) => Promise<any>) => fn(driver),
     healthCheck: async () => true,
@@ -198,6 +199,17 @@ describe('capability execution end to end (Sprint 2-3 spine)', () => {
     assert.ok(entry, 'expected a successful send_alert audit entry');
     assert.ok(entry?.args_hash && entry.args_hash.length === 64); // sha-256 hex
     assert.ok(!JSON.stringify(body.entries).includes('priority')); // raw args never stored
+  });
+
+  it('audits authorization DENIALS (outcome=denied), so blocked attempts show in the trail', async () => {
+    // An ungranted capability was rejected above; its denial must be in the audit log.
+    const res = await fetch(`${base}/audit?outcome=denied`);
+    const body = (await res.json()) as { entries: Array<{ capability: string; outcome: string; event_type: string }> };
+    const denied = body.entries.filter((e) => e.outcome === 'denied');
+    assert.ok(denied.length >= 1, 'expected at least one denied audit entry');
+    assert.ok(denied.some((e) => e.event_type === 'capability.denied'));
+    // The constraint-violation and ungranted attempts should be attributed capabilities.
+    assert.ok(denied.some((e) => e.capability === 'delete_everything' || e.capability === 'blocked' || e.capability === 'send_alert'));
   });
 
   it('agent requests a new capability -> pending grant + device-authorization approval (AAP §5.4/§7)', async () => {

@@ -67,6 +67,7 @@ function inMemoryStorage() {
       list: async () => ({ items: [...connMap.values()], hasMore: false, nextCursor: null }),
     },
     auditLog: { append: async () => {}, query: async () => ({ items: [], hasMore: false, nextCursor: null }), recordSecurityEvent: async () => {} },
+    connectionGrants: { listByAgent: async () => [], upsert: async (g) => g, findForAgent: async () => null, delete: async () => {} },
     jtiCache: { put: async (j: string) => (seen.has(j) ? false : (seen.add(j), true)) },
     transaction: async (fn: (tx: any) => Promise<any>) => fn(d),
     healthCheck: async () => true,

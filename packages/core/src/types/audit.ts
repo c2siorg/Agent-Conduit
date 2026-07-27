@@ -13,6 +13,8 @@ export interface AuditEntry {
   capability: string | null;
   connectionId: string | null;
   operation: string | null;
+  /** Task the action ran under (Conduit extension); null for standing-grant actions. */
+  taskId: string | null;
   outcome: AuditOutcome;
   /** Stable hash of request args — never the raw values. */
   argsHash: string | null;

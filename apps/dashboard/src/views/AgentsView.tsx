@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { createDashboardApi, type AgentSummary } from '../api/client';
-import { useAgents } from '../api/queries';
+import { useAgentRisk, useAgents } from '../api/queries';
 import type { NavKey } from '../components/AppShell';
 import { EditAgentForm } from '../components/EditAgentForm';
 import { OperatorKeyNotice } from '../components/OperatorKeyNotice';
@@ -9,6 +9,7 @@ import { RegisterAgentForm } from '../components/RegisterAgentForm';
 import { StatusPill } from '../components/StatusPill';
 import { parseHostKey, signHostJwt } from '../lib/agentCrypto';
 import { useOperatorKey } from '../lib/useOperatorKey';
+import { pushToast } from '../lib/toast';
 
 const api = createDashboardApi();
 
@@ -32,6 +33,8 @@ function fmt(iso: string | null): string {
  */
 export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }): JSX.Element {
   const { data, isLoading, error } = useAgents();
+  const riskData = useAgentRisk().data ?? [];
+  const riskFor = (id: string) => riskData.find((r) => r.agent_id === id);
   const queryClient = useQueryClient();
   const { key: hostKey, loaded } = useOperatorKey();
   const [showForm, setShowForm] = useState(false);
@@ -75,8 +78,10 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
       const hostJwt = await signHostJwt(hostJwk, issuer);
       await api.revokeAgent(hostJwt, agentId);
       await queryClient.invalidateQueries({ queryKey: ['agents'] });
+      pushToast('Agent revoked', 'success');
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e));
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
     } finally {
       setBusyId(null);
     }
@@ -140,6 +145,7 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
                 <th>Agent</th>
                 <th>Description</th>
                 <th>Status</th>
+                <th>Risk</th>
                 <th>Mode</th>
                 <th>Created</th>
                 <th>Actions</th>
@@ -155,6 +161,19 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
                   <td className="cellDesc">{a.description || '-'}</td>
                   <td>
                     <StatusPill status={a.status} />
+                  </td>
+                  <td>
+                    {(() => {
+                      const r = riskFor(a.id);
+                      if (!r) {
+                        return <span className="muted">-</span>;
+                      }
+                      return (
+                        <span className={`testBadge ${r.level === 'high' ? 'bad' : r.level === 'med' ? '' : 'ok'}`} title={`${r.active_grants} active grant(s)`}>
+                          {r.level} · {r.blast_radius}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="mono">{a.mode}</td>
                   <td className="mono">{fmt(a.created_at)}</td>
@@ -177,7 +196,7 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="muted">
+                  <td colSpan={7} className="muted">
                     {agents.length === 0 ? 'No agents registered yet.' : 'No agents match your filter.'}
                   </td>
                 </tr>

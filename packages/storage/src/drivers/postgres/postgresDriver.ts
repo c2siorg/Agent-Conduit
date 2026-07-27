@@ -10,16 +10,18 @@ import type {
   ConnectionRepository,
   HostRepository,
   JtiCacheRepository,
+  TaskRepository,
   ToolRepository,
 } from '../../repositories.js';
 import type { StorageDriver } from '../../storageDriver.js';
-import { stubRepository } from '../stubRepository.js';
 import { PostgresAgentRepository } from './agentRepository.js';
 import { PostgresAuditLogRepository } from './auditLogRepository.js';
 import { PostgresCapabilityGrantRepository } from './capabilityGrantRepository.js';
+import { PostgresConnectionGrantRepository } from './connectionGrantRepository.js';
 import { PostgresConnectionRepository } from './connectionRepository.js';
 import { PostgresHostRepository } from './hostRepository.js';
 import { PostgresJtiCacheRepository } from './jtiCacheRepository.js';
+import { PostgresTaskRepository } from './taskRepository.js';
 import { PostgresToolRepository } from './toolRepository.js';
 import type { Queryable } from './queryable.js';
 
@@ -75,9 +77,9 @@ export class PostgresStorageDriver implements StorageDriver {
   readonly hosts: HostRepository;
   readonly agents: AgentRepository;
   readonly capabilityGrants: CapabilityGrantRepository;
+  readonly tasks: TaskRepository;
   readonly connections: ConnectionRepository;
-  readonly connectionGrants: ConnectionGrantRepository =
-    stubRepository<ConnectionGrantRepository>('PostgresConnectionGrantRepository');
+  readonly connectionGrants: ConnectionGrantRepository;
   readonly tools: ToolRepository;
   readonly auditLog: AuditLogRepository;
   readonly jtiCache: JtiCacheRepository;
@@ -97,7 +99,9 @@ export class PostgresStorageDriver implements StorageDriver {
     this.agents = new PostgresAgentRepository(db);
     this.jtiCache = new PostgresJtiCacheRepository(db);
     this.capabilityGrants = new PostgresCapabilityGrantRepository(db);
+    this.tasks = new PostgresTaskRepository(db);
     this.connections = new PostgresConnectionRepository(db);
+    this.connectionGrants = new PostgresConnectionGrantRepository(db);
     this.tools = new PostgresToolRepository(db);
     this.auditLog = new PostgresAuditLogRepository(db);
   }

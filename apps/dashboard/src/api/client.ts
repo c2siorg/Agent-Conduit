@@ -80,6 +80,18 @@ export interface ToolSummary {
   schema_cached_at: string | null;
 }
 
+/** One declarative policy rule. */
+export interface PolicyRule {
+  id: string;
+  description?: string;
+  effect: 'allow' | 'deny' | 'require_approval';
+  agentModes?: string[];
+  capabilities?: string[];
+  platforms?: string[];
+  operations?: string[];
+  minRisk?: 'low' | 'med' | 'high';
+}
+
 /** Operator-toggleable runtime security settings (`GET`/`PATCH /admin/config`). */
 export interface SecuritySettings {
   rateLimit: { enabled: boolean; perIpPerMinute: number; registerPerHourPerIp: number };
@@ -87,6 +99,7 @@ export interface SecuritySettings {
   jwks: { allowPrivateHosts: boolean };
   dpop: { enabled: boolean };
   mtls: { enabled: boolean };
+  policy: { enabled: boolean; defaultEffect: 'allow' | 'deny'; rules: PolicyRule[] };
 }
 
 export type SecuritySettingsPatch = {
@@ -111,6 +124,54 @@ export interface ConnectorInfo {
   docs_url: string | null;
   fields: ConnectorField[];
   operations: Array<{ name: string; description: string }>;
+}
+
+/** A capability grant for an agent (from `GET /agents/:id/grants`). */
+export interface AgentGrant {
+  capability: string;
+  connection_id: string | null;
+  operation: string | null;
+  task_id: string | null;
+  status: string;
+  /** Server-computed risk level. */
+  risk?: 'low' | 'med' | 'high';
+  /** "Broken wire": the agent has connector authorizations but this grant's connection isn't among them. */
+  blocked?: boolean;
+}
+
+/** A connector an agent is authorized to use (`GET /agents/:id/connections`). */
+export interface AgentConnection {
+  connection_id: string;
+  name: string;
+  platform: string;
+  allowed_operations: string[];
+  rate_limit: number | null;
+}
+
+export interface AttachConnectionInput {
+  connectionId: string;
+  allowedOperations?: string[];
+  rateLimit?: number | null;
+}
+
+/** Per-agent blast radius (`GET /agents/risk`). */
+export interface AgentRisk {
+  agent_id: string;
+  active_grants: number;
+  blast_radius: number;
+  level: 'low' | 'med' | 'high';
+}
+
+/** Compliance posture (`GET /compliance`). */
+export interface ComplianceControl {
+  id: string;
+  title: string;
+  status: 'met' | 'partial' | 'gap';
+  detail: string;
+}
+export interface ComplianceReport {
+  summary: { met: number; partial: number; gap: number; total: number };
+  domains: Array<{ domain: string; controls: ComplianceControl[] }>;
 }
 
 /** Token/latency telemetry snapshot from `GET /metrics`. */
@@ -148,6 +209,12 @@ export interface DashboardApi {
   listAudit(filter?: AuditFilter): Promise<AuditEntry[]>;
   listTools(): Promise<ToolSummary[]>;
   listConnectors(): Promise<ConnectorInfo[]>;
+  listAgentGrants(agentId: string): Promise<AgentGrant[]>;
+  listAgentRisk(): Promise<AgentRisk[]>;
+  listAgentConnections(agentId: string): Promise<AgentConnection[]>;
+  attachConnection(hostJwt: string, agentId: string, input: AttachConnectionInput): Promise<void>;
+  detachConnection(hostJwt: string, agentId: string, connectionId: string): Promise<void>;
+  getCompliance(): Promise<ComplianceReport>;
   getMetrics(): Promise<MetricsSnapshot>;
   getSecuritySettings(hostJwt: string): Promise<SecuritySettings>;
   updateSecuritySettings(hostJwt: string, patch: SecuritySettingsPatch): Promise<SecuritySettings>;
@@ -323,6 +390,65 @@ export function createDashboardApi(baseUrl = '/api'): DashboardApi {
         throw new Error(`GET ${baseUrl}/connectors -> ${res.status}`);
       }
       return ((await res.json()) as { connectors: ConnectorInfo[] }).connectors;
+    },
+
+    async listAgentGrants(agentId) {
+      const res = await fetch(`${baseUrl}/agents/${agentId}/grants`);
+      if (!res.ok) {
+        throw new Error(`GET ${baseUrl}/agents/${agentId}/grants -> ${res.status}`);
+      }
+      return ((await res.json()) as { grants: AgentGrant[] }).grants;
+    },
+
+    async listAgentRisk() {
+      const res = await fetch(`${baseUrl}/agents/risk`);
+      if (!res.ok) {
+        throw new Error(`GET ${baseUrl}/agents/risk -> ${res.status}`);
+      }
+      return ((await res.json()) as { agents: AgentRisk[] }).agents;
+    },
+
+    async listAgentConnections(agentId) {
+      const res = await fetch(`${baseUrl}/agents/${agentId}/connections`);
+      if (!res.ok) {
+        throw new Error(`GET ${baseUrl}/agents/${agentId}/connections -> ${res.status}`);
+      }
+      return ((await res.json()) as { connections: AgentConnection[] }).connections;
+    },
+
+    async attachConnection(hostJwt, agentId, input) {
+      const res = await fetch(`${baseUrl}/agents/${agentId}/connections`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${hostJwt}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          connection_id: input.connectionId,
+          ...(input.allowedOperations !== undefined ? { allowed_operations: input.allowedOperations } : {}),
+          ...(input.rateLimit !== undefined ? { rate_limit: input.rateLimit } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `attach failed (${res.status})`);
+      }
+    },
+
+    async detachConnection(hostJwt, agentId, connectionId) {
+      const res = await fetch(`${baseUrl}/agents/${agentId}/connections/${connectionId}`, {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${hostJwt}` },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `detach failed (${res.status})`);
+      }
+    },
+
+    async getCompliance() {
+      const res = await fetch(`${baseUrl}/compliance`);
+      if (!res.ok) {
+        throw new Error(`GET ${baseUrl}/compliance -> ${res.status}`);
+      }
+      return (await res.json()) as ComplianceReport;
     },
 
     async getMetrics() {

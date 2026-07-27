@@ -13,6 +13,7 @@ import { Icon } from '../components/Icon';
 import { OperatorKeyNotice } from '../components/OperatorKeyNotice';
 import { parseHostKey, signHostJwt } from '../lib/agentCrypto';
 import { useOperatorKey } from '../lib/useOperatorKey';
+import { pushToast } from '../lib/toast';
 
 const api = createDashboardApi();
 
@@ -120,8 +121,10 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
     try {
       const result = await api.testConnection(await hostJwt(), id);
       setTests((prev) => ({ ...prev, [id]: result }));
+      pushToast(`${result.ok ? 'Test passed' : 'Test failed'} (${result.checked}): ${result.detail}`, result.ok ? 'success' : 'error');
     } catch (e) {
       setTests((prev) => ({ ...prev, [id]: { ok: false, checked: 'structure', detail: e instanceof Error ? e.message : String(e) } }));
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
     } finally {
       setRowBusy(null);
     }
@@ -138,8 +141,10 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
     try {
       await api.deleteConnection(await hostJwt(), c.id);
       await queryClient.invalidateQueries({ queryKey: ['connections'] });
+      pushToast(`Deleted connection "${c.name}"`, 'success');
     } catch (e) {
       setRowError(e instanceof Error ? e.message : String(e));
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
     } finally {
       setRowBusy(null);
     }

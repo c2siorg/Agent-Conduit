@@ -1,5 +1,5 @@
 import type { ConnectorRegistry, CredentialTest } from '@conduit/connectors';
-import { ConduitError, ErrorCode, type Connection } from '@conduit/core';
+import { ConduitError, ErrorCode, type Connection, type ConnectionGrant } from '@conduit/core';
 import type { StorageDriver } from '@conduit/storage';
 import type { CredentialCipher } from './credentialCipher.js';
 
@@ -32,6 +32,18 @@ export interface ConnectionRegistryService {
   deleteConnection(id: string): Promise<void>;
   /** Validate the stored credential (structural, plus a live probe where the driver supports one). */
   testConnection(id: string): Promise<CredentialTest>;
+  /** Authorize (attach) a connector for an agent, with a scoped operation set + optional rate limit. */
+  attachConnection(
+    hostId: string,
+    agentId: string,
+    connectionId: string,
+    allowedOperations: string[],
+    rateLimit: number | null,
+  ): Promise<ConnectionGrant>;
+  /** Detach a connector from an agent. */
+  detachConnection(hostId: string, agentId: string, connectionId: string): Promise<void>;
+  /** The connectors an agent is authorized to use (with connection name/platform for the UI). */
+  listAgentConnections(agentId: string): Promise<Array<ConnectionGrant & { name: string; platform: string }>>;
 }
 
 export function createConnectionRegistryService(
@@ -114,6 +126,87 @@ export function createConnectionRegistryService(
       // Persist for at-a-glance health in the vault.
       await storage.connections.recordTest(id, result.ok, result.detail, new Date());
       return result;
+    },
+
+    async attachConnection(hostId, agentId, connectionId, allowedOperations, rateLimit) {
+      const agent = await storage.agents.findById(agentId);
+      if (!agent) {
+        throw new ConduitError(ErrorCode.agentNotFound, 'agent not found', 404);
+      }
+      if (agent.hostId !== hostId) {
+        throw new ConduitError(ErrorCode.unauthorized, 'agent does not belong to this host', 403);
+      }
+      const connection = await storage.connections.findById(connectionId);
+      if (!connection) {
+        throw new ConduitError(ErrorCode.invalidRequest, 'connection not found', 404);
+      }
+      // Validate the scoped operations against what the connection actually permits: its registration-time
+      // allowlist if set, otherwise the driver's concrete operations (placeholder names like the generic
+      // REST "<METHOD> <path>" are skipped — those are free-form and can't be validated).
+      if (allowedOperations.length > 0) {
+        const driver = connectors?.get(connection.platform);
+        const universe =
+          connection.allowedOperations.length > 0
+            ? connection.allowedOperations
+            : (driver?.supportedOperations ?? []).map((o) => o.name).filter((n) => !n.includes('<'));
+        if (universe.length > 0) {
+          const invalid = allowedOperations.filter((op) => !universe.includes(op));
+          if (invalid.length > 0) {
+            throw new ConduitError(
+              ErrorCode.invalidRequest,
+              `unknown operation(s) for "${connection.platform}": ${invalid.join(', ')}`,
+              400,
+            );
+          }
+        }
+      }
+      const grant = await storage.connectionGrants.upsert({ agentId, connectionId, allowedOperations, rateLimit });
+      await storage.auditLog.append({
+        agentId,
+        hostId,
+        eventType: 'connection.attach',
+        capability: null,
+        connectionId,
+        operation: null,
+        taskId: null,
+        outcome: 'success',
+        argsHash: null,
+        durationMs: null,
+      });
+      return grant;
+    },
+
+    async detachConnection(hostId, agentId, connectionId) {
+      const agent = await storage.agents.findById(agentId);
+      if (!agent) {
+        throw new ConduitError(ErrorCode.agentNotFound, 'agent not found', 404);
+      }
+      if (agent.hostId !== hostId) {
+        throw new ConduitError(ErrorCode.unauthorized, 'agent does not belong to this host', 403);
+      }
+      await storage.connectionGrants.delete(agentId, connectionId);
+      await storage.auditLog.append({
+        agentId,
+        hostId,
+        eventType: 'connection.detach',
+        capability: null,
+        connectionId,
+        operation: null,
+        taskId: null,
+        outcome: 'success',
+        argsHash: null,
+        durationMs: null,
+      });
+    },
+
+    async listAgentConnections(agentId) {
+      const grants = await storage.connectionGrants.listByAgent(agentId);
+      const out: Array<ConnectionGrant & { name: string; platform: string }> = [];
+      for (const g of grants) {
+        const connection = await storage.connections.findById(g.connectionId);
+        out.push({ ...g, name: connection?.name ?? 'unknown', platform: connection?.platform ?? 'rest' });
+      }
+      return out;
     },
   };
 }

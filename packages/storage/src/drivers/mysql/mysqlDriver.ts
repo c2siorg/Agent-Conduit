@@ -6,6 +6,7 @@ import type {
   ConnectionRepository,
   HostRepository,
   JtiCacheRepository,
+  TaskRepository,
   ToolRepository,
 } from '../../repositories.js';
 import type { StorageDriver } from '../../storageDriver.js';
@@ -33,6 +34,7 @@ export class MysqlStorageDriver implements StorageDriver {
   readonly hosts: HostRepository = stubRepository('MysqlHostRepository');
   readonly agents: AgentRepository = stubRepository('MysqlAgentRepository');
   readonly capabilityGrants: CapabilityGrantRepository = stubRepository('MysqlCapabilityGrantRepository');
+  readonly tasks: TaskRepository = stubRepository('MysqlTaskRepository');
   readonly connections: ConnectionRepository = stubRepository('MysqlConnectionRepository');
   readonly connectionGrants: ConnectionGrantRepository = stubRepository('MysqlConnectionGrantRepository');
   readonly tools: ToolRepository = stubRepository('MysqlToolRepository');

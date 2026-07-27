@@ -1,8 +1,20 @@
 import type { ReactNode } from 'react';
 import { useHealth } from '../api/queries';
 import { Icon } from './Icon';
+import { Toaster } from './Toaster';
 
-export type NavKey = 'getStarted' | 'dashboard' | 'agents' | 'connections' | 'tools' | 'audit' | 'settings';
+export type NavKey =
+  | 'getStarted'
+  | 'dashboard'
+  | 'agents'
+  | 'topology'
+  | 'wiring'
+  | 'policy'
+  | 'connections'
+  | 'tools'
+  | 'audit'
+  | 'compliance'
+  | 'settings';
 
 interface NavItem {
   key: NavKey;
@@ -16,9 +28,13 @@ const NAV_GROUPS: ReadonlyArray<{ label: string; items: ReadonlyArray<NavItem> }
     items: [
       { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
       { key: 'agents', label: 'Agent Management', icon: 'agents' },
+      { key: 'topology', label: 'Topology & Risk', icon: 'topology' },
+      { key: 'wiring', label: 'Access Wiring', icon: 'wiring' },
+      { key: 'policy', label: 'Execution Policy', icon: 'policy' },
       { key: 'connections', label: 'Platform Connections', icon: 'connections' },
       { key: 'tools', label: 'Tool & Schema Router', icon: 'tools' },
       { key: 'audit', label: 'Audit Logs', icon: 'audit' },
+      { key: 'compliance', label: 'Compliance', icon: 'compliance' },
     ],
   },
   {
@@ -91,6 +107,7 @@ export function AppShell({ active, onNavigate, children }: AppShellProps): JSX.E
         </header>
         <main className="content">{children}</main>
       </div>
+      <Toaster />
     </div>
   );
 }

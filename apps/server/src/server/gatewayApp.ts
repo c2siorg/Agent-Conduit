@@ -33,6 +33,7 @@ function defaultSettings(): RuntimeSettingsStore {
     jwks: { allowPrivateHosts: false },
     dpop: { enabled: false },
     mtls: { enabled: false },
+    policy: { enabled: false, defaultEffect: 'allow', rules: [] },
   });
 }
 
@@ -95,6 +96,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Express {
       connectionProxy: deps.connectionProxy,
       agentPipeline: deps.agentPipeline,
       hostPipeline: deps.hostPipeline,
+      storage: deps.storage,
       baseUrl: deps.config.server.baseUrl,
     }),
   );
@@ -104,6 +106,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Express {
       connectionRegistry: deps.connectionRegistry,
       connectors: deps.connectors ?? createConnectorRegistry(),
       settings,
+      config: deps.config,
       hostPipeline: deps.hostPipeline,
     }),
   );

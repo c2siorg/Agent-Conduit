@@ -73,7 +73,9 @@ export function SecuritySettingsPanel(): JSX.Element {
     setError(null);
     setStatus(null);
     try {
-      const updated = await api.updateSecuritySettings(await hostJwt(), settings);
+      // Policy rules are managed in the Policy tab; don't overwrite them from here.
+      const { policy: _policy, ...rest } = settings;
+      const updated = await api.updateSecuritySettings(await hostJwt(), rest);
       setSettings(updated);
       setStatus('Saved — enforcement updated on the running gateway.');
     } catch (e) {
@@ -135,6 +137,10 @@ export function SecuritySettingsPanel(): JSX.Element {
           <Toggle label="Allow JWKS fetch to private hosts" hint="SSRF: keep off in production" checked={s.jwks.allowPrivateHosts} onChange={(v) => setSettings({ ...s, jwks: { allowPrivateHosts: v } })} />
           <Toggle label="Require DPoP" hint="RFC 9449, enforcement pending" checked={s.dpop.enabled} onChange={(v) => setSettings({ ...s, dpop: { enabled: v } })} />
           <Toggle label="Require mTLS" hint="RFC 8705, applies on restart" checked={s.mtls.enabled} onChange={(v) => setSettings({ ...s, mtls: { enabled: v } })} />
+
+          <p className="muted" style={{ marginTop: 8 }}>
+            Execution policy (allow/deny/require-approval rules) has moved to its own <strong>Policy</strong> tab.
+          </p>
 
           {error && <div className="errorBox">{error}</div>}
           {status && <div className="resultBox">{status}</div>}
