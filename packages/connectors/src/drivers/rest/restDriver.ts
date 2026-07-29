@@ -59,7 +59,7 @@ export class RestDriver implements PlatformDriver {
       }
     }
 
-    const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json' };
+    const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json', 'user-agent': 'agent-conduit' };
     applyAuth(headers, ctx.credential);
 
     const init: RequestInit = { method, headers };

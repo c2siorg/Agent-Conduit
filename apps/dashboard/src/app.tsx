@@ -3,18 +3,26 @@ import { AppShell, type NavKey } from './components/AppShell';
 import { AgentsView } from './views/AgentsView';
 import { AuditView } from './views/AuditView';
 import { ConnectionsView } from './views/ConnectionsView';
+import { ComplianceView } from './views/ComplianceView';
 import { DashboardView } from './views/DashboardView';
 import { GetStartedView } from './views/GetStartedView';
+import { PolicyView } from './views/PolicyView';
 import { SettingsView } from './views/SettingsView';
 import { ToolsView } from './views/ToolsView';
+import { TopologyView } from './views/TopologyView';
+import { WiringView } from './views/WiringView';
 
 const NAV_KEYS: readonly NavKey[] = [
   'getStarted',
   'dashboard',
   'agents',
+  'topology',
+  'wiring',
+  'policy',
   'connections',
   'tools',
   'audit',
+  'compliance',
   'settings',
 ];
 
@@ -76,6 +84,14 @@ export function App(): JSX.Element {
         return <ConnectionsView onNavigate={navigate} />;
       case 'settings':
         return <SettingsView />;
+      case 'topology':
+        return <TopologyView />;
+      case 'wiring':
+        return <WiringView onNavigate={navigate} />;
+      case 'policy':
+        return <PolicyView onNavigate={navigate} />;
+      case 'compliance':
+        return <ComplianceView />;
       case 'tools':
         return <ToolsView />;
       case 'audit':

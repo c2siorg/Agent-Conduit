@@ -62,6 +62,7 @@ function inMemoryStorage() {
       query: async () => ({ items: [...audit].reverse(), hasMore: false, nextCursor: null }),
       recordSecurityEvent: async () => {},
     },
+    connectionGrants: { listByAgent: async () => [], upsert: async (g) => g, findForAgent: async () => null, delete: async () => {} },
     jtiCache: { put: async (j: string) => (seen.has(j) ? false : (seen.add(j), true)) },
     transaction: async (fn: (tx: any) => Promise<any>) => fn(driver),
     healthCheck: async () => true,

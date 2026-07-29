@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import { ConduitError, ErrorCode } from '@conduit/core';
 import type { Constraint } from '@conduit/core';
+import type { StorageDriver } from '@conduit/storage';
 import { Router } from 'express';
 import type { AuthContext } from '../auth/authContext.js';
 import type { JwtPipeline } from '../auth/jwtPipeline.js';
@@ -13,8 +15,14 @@ export interface CapabilityRoutesDeps {
   connectionProxy: ConnectionProxy;
   agentPipeline: JwtPipeline;
   hostPipeline: JwtPipeline;
+  /** Used to audit authorization denials that are thrown before the proxy runs. */
+  storage: StorageDriver;
   /** Public base URL, used to build the approval `verification_uri` (AAP §7). */
   baseUrl: string;
+}
+
+function hashArgs(args: Record<string, unknown>): string {
+  return createHash('sha256').update(JSON.stringify(args)).digest('hex');
 }
 
 /**
@@ -52,6 +60,85 @@ export function capabilityRoutes(deps: CapabilityRoutesDeps): Router {
       })
       .then((grant) => {
         res.status(201).json({ grant_id: grant.id, capability: grant.capability, status: grant.status });
+      })
+      .catch(next);
+  });
+
+  // Task-scoped grants (Conduit extension): create a time-boxed bundle of capabilities that auto-revoke.
+  router.post('/agent/task', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    const body = (req.body ?? {}) as {
+      agent_id?: string;
+      name?: string;
+      purpose?: string;
+      ttl_seconds?: number;
+      capabilities?: Array<{ capability?: string; connection_id?: string; operation?: string; constraints?: Record<string, Constraint> }>;
+    };
+    if (!body.agent_id || !body.name) {
+      next(new ConduitError(ErrorCode.invalidRequest, 'agent_id and name are required', 400));
+      return;
+    }
+    const capabilities = (body.capabilities ?? [])
+      .filter((c): c is { capability: string } & typeof c => typeof c?.capability === 'string')
+      .map((c) => ({
+        capability: c.capability,
+        connectionId: c.connection_id ?? null,
+        operation: c.operation ?? null,
+        constraints: c.constraints ?? {},
+      }));
+    deps.identityService
+      .createTask(host.id, {
+        agentId: body.agent_id,
+        name: body.name,
+        purpose: body.purpose ?? null,
+        ttlSeconds: typeof body.ttl_seconds === 'number' ? body.ttl_seconds : 3600,
+        capabilities,
+      })
+      .then(({ task, grants }) => {
+        res.status(201).json({
+          task_id: task.id,
+          status: task.status,
+          expires_at: task.expiresAt,
+          granted: grants.map((g) => g.capability),
+        });
+      })
+      .catch(next);
+  });
+
+  router.post('/task/:id/complete', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    deps.identityService
+      .completeTask(host.id, req.params['id'] ?? '')
+      .then((task) => {
+        res.json({ task_id: task.id, status: task.status, completed_at: task.completedAt });
+      })
+      .catch(next);
+  });
+
+  router.get('/tasks', (_req, res, next) => {
+    deps.identityService
+      .listTasks()
+      .then((tasks) => {
+        res.json({
+          tasks: tasks.map((t) => ({
+            id: t.id,
+            agent_id: t.agentId,
+            name: t.name,
+            purpose: t.purpose,
+            status: t.status,
+            expires_at: t.expiresAt,
+            created_at: t.createdAt,
+            completed_at: t.completedAt,
+          })),
+        });
       })
       .catch(next);
   });
@@ -193,7 +280,31 @@ export function capabilityRoutes(deps: CapabilityRoutesDeps): Router {
         const result = await deps.connectionProxy.execute(ctx.agent, ctx.grant, ctx.args ?? {});
         res.json({ data: result.data });
       })
-      .catch(next);
+      .catch((err: unknown) => {
+        // Audit authorization denials (403 thrown in the pipeline/proxy before the execute is logged) so
+        // blocked attempts appear in the audit trail with outcome=denied. Best-effort; never masks the error.
+        if (err instanceof ConduitError && (err.httpStatus === 403 || err.httpStatus === 429) && ctx.agent) {
+          void deps.storage.auditLog
+            .append({
+              agentId: ctx.agent.id,
+              hostId: ctx.agent.hostId,
+              eventType: 'capability.denied',
+              capability: ctx.capability ?? null,
+              connectionId: ctx.grant?.connectionId ?? null,
+              operation: ctx.grant?.operation ?? null,
+              taskId: ctx.grant?.taskId ?? null,
+              outcome: 'denied',
+              argsHash: hashArgs(ctx.args ?? {}),
+              durationMs: null,
+            })
+            .catch(() => {
+              /* auditing a denial must not itself fail the request */
+            })
+            .finally(() => next(err));
+          return;
+        }
+        next(err);
+      });
   });
 
   return router;

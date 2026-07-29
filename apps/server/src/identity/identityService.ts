@@ -1,6 +1,6 @@
 import { decodeJwt, type JwtVerifier } from '@conduit/crypto';
 import { ConduitError, ErrorCode } from '@conduit/core';
-import type { Agent, AgentMode, CapabilityGrant, Constraint, Host, Jwk } from '@conduit/core';
+import type { Agent, AgentMode, CapabilityGrant, Constraint, Host, Jwk, Task } from '@conduit/core';
 import type { StorageDriver } from '@conduit/storage';
 import type { StateMachine } from './stateMachine.js';
 
@@ -51,6 +51,28 @@ export interface CapabilityRequest {
   constraints: Record<string, Constraint>;
 }
 
+/** One capability activated by a task (maps to a connection + operation). */
+export interface TaskCapabilitySpec {
+  capability: string;
+  connectionId: string | null;
+  operation: string | null;
+  constraints: Record<string, Constraint>;
+}
+
+/** Input for `createTask` — a named, time-boxed bundle of capability grants. */
+export interface CreateTaskInput {
+  agentId: string;
+  name: string;
+  purpose: string | null;
+  ttlSeconds: number;
+  capabilities: TaskCapabilitySpec[];
+}
+
+export interface TaskWithGrants {
+  task: Task;
+  grants: CapabilityGrant[];
+}
+
 export interface IdentityServiceDeps {
   storage: StorageDriver;
   stateMachine: StateMachine;
@@ -96,6 +118,12 @@ export interface IdentityService {
   rotateHostKey(hostId: string, publicKeyJwk: Jwk): Promise<Host>;
   /** Introspect an agent token (AAP §5.12 / RFC 7662). Never throws on an invalid token: returns active=false. */
   introspect(token: string): Promise<IntrospectionResult>;
+  /** Create a task: activate a time-boxed bundle of capability grants for an agent (Conduit extension). */
+  createTask(hostId: string, input: CreateTaskInput): Promise<TaskWithGrants>;
+  /** Complete a task: revoke its grants (zero standing access) and mark it completed. */
+  completeTask(hostId: string, taskId: string): Promise<Task>;
+  /** All tasks (admin/dashboard), with status normalized to `expired` when the TTL has elapsed. */
+  listTasks(): Promise<Task[]>;
 }
 
 export function createIdentityService(deps: IdentityServiceDeps): IdentityService {
@@ -185,6 +213,7 @@ export function createIdentityService(deps: IdentityServiceDeps): IdentityServic
         capability: input.capability,
         connectionId: input.connectionId,
         operation: input.operation,
+        taskId: null,
         status: 'active',
         constraints: input.constraints,
         grantedBy: hostId,
@@ -210,6 +239,7 @@ export function createIdentityService(deps: IdentityServiceDeps): IdentityServic
             capability: request.name,
             connectionId: null,
             operation: null,
+            taskId: null,
             status: 'pending',
             constraints: request.constraints,
             grantedBy: null,
@@ -348,6 +378,69 @@ export function createIdentityService(deps: IdentityServiceDeps): IdentityServic
       } catch {
         return { active: false };
       }
+    },
+
+    async createTask(hostId, input) {
+      const agent = await storage.agents.findById(input.agentId);
+      if (!agent) {
+        throw new ConduitError(ErrorCode.agentNotFound, 'agent not found', 404);
+      }
+      if (agent.hostId !== hostId) {
+        throw new ConduitError(ErrorCode.unauthorized, 'agent does not belong to this host', 403);
+      }
+      const expiresAt = input.ttlSeconds > 0 ? new Date(Date.now() + input.ttlSeconds * 1000) : null;
+      const task = await storage.tasks.create({
+        agentId: input.agentId,
+        hostId,
+        name: input.name,
+        purpose: input.purpose,
+        expiresAt,
+      });
+      // Activate each capability as a grant bound to the task, expiring with it (auto-revoke on TTL).
+      const grants: CapabilityGrant[] = [];
+      for (const spec of input.capabilities) {
+        grants.push(
+          await storage.capabilityGrants.upsert({
+            agentId: input.agentId,
+            capability: spec.capability,
+            connectionId: spec.connectionId,
+            operation: spec.operation,
+            taskId: task.id,
+            status: 'active',
+            constraints: spec.constraints,
+            grantedBy: hostId,
+            expiresAt,
+          }),
+        );
+      }
+      return { task, grants };
+    },
+
+    async completeTask(hostId, taskId) {
+      const task = await storage.tasks.findById(taskId);
+      if (!task) {
+        throw new ConduitError(ErrorCode.invalidRequest, 'task not found', 404);
+      }
+      if (task.hostId !== hostId) {
+        throw new ConduitError(ErrorCode.unauthorized, 'task does not belong to this host', 403);
+      }
+      // Zero standing access: deny every grant the task activated, then mark it completed.
+      await storage.capabilityGrants.revokeByTask(taskId);
+      await storage.tasks.setStatus(taskId, 'completed', new Date());
+      const updated = await storage.tasks.findById(taskId);
+      if (!updated) {
+        throw new ConduitError(ErrorCode.internalError, 'task disappeared after completion', 500);
+      }
+      return updated;
+    },
+
+    async listTasks() {
+      const page = await storage.tasks.list({ limit: 200 });
+      const now = Date.now();
+      // Surface expiry without a background job: an active task past its TTL reads as expired.
+      return page.items.map((t) =>
+        t.status === 'active' && t.expiresAt && t.expiresAt.getTime() <= now ? { ...t, status: 'expired' as const } : t,
+      );
     },
   };
 }

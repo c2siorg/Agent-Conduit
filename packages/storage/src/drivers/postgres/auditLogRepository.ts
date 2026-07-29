@@ -5,7 +5,7 @@ import type { Queryable } from './queryable.js';
 import { clampLimit, decodeCursor, encodeCursor } from './rowMappers.js';
 
 const COLS =
-  'id, agent_id, host_id, event_type, capability, connection_id, operation, ' +
+  'id, agent_id, host_id, event_type, capability, connection_id, operation, task_id, ' +
   'outcome, args_hash, duration_ms, created_at';
 
 type Row = {
@@ -16,6 +16,7 @@ type Row = {
   capability: string | null;
   connection_id: string | null;
   operation: string | null;
+  task_id: string | null;
   outcome: AuditOutcome;
   args_hash: string | null;
   duration_ms: number | null;
@@ -31,6 +32,7 @@ function map(r: Row): AuditEntry {
     capability: r.capability,
     connectionId: r.connection_id,
     operation: r.operation,
+    taskId: r.task_id,
     outcome: r.outcome,
     argsHash: r.args_hash,
     durationMs: r.duration_ms,
@@ -44,8 +46,8 @@ export class PostgresAuditLogRepository implements AuditLogRepository {
   async append(entry: NewAuditEntry): Promise<void> {
     await this.db().query(
       `INSERT INTO audit_log
-         (agent_id, host_id, event_type, capability, connection_id, operation, outcome, args_hash, duration_ms)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+         (agent_id, host_id, event_type, capability, connection_id, operation, task_id, outcome, args_hash, duration_ms)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         entry.agentId,
         entry.hostId,
@@ -53,6 +55,7 @@ export class PostgresAuditLogRepository implements AuditLogRepository {
         entry.capability,
         entry.connectionId,
         entry.operation,
+        entry.taskId,
         entry.outcome,
         entry.argsHash,
         entry.durationMs,

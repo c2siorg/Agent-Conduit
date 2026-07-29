@@ -17,12 +17,13 @@ export interface Connection {
   lastTestDetail: string | null;
 }
 
-/** Binds an agent to a connection with a scoped operation set, constraints, and rate limit. */
+/** Authorizes an agent to use a connection, with a scoped operation set and an optional rate limit. */
 export interface ConnectionGrant {
   id: string;
   agentId: string;
   connectionId: string;
+  /** Operations this agent may run on the connection; empty = all the connection permits. */
   allowedOperations: string[];
-  constraints: Record<string, unknown>;
+  /** Max requests per minute for this (agent, connection); null = unlimited. */
   rateLimit: number | null;
 }

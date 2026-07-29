@@ -117,7 +117,8 @@ export class ManifestDriver implements PlatformDriver {
     }
     const baseUrl = base.text.replace(/\/+$/, '');
 
-    const headers: Record<string, string> = { accept: 'application/json' };
+    // A User-Agent is required by some APIs (notably GitHub, which 403s without one).
+    const headers: Record<string, string> = { accept: 'application/json', 'user-agent': 'agent-conduit' };
     for (const [name, template] of Object.entries(this.manifest.headers ?? {})) {
       const filled = fillTemplate(template, secret);
       if (!filled.missing) {

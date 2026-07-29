@@ -1,3 +1,5 @@
+import type { PolicyConfig, PolicyEffect, PolicyRule } from '@conduit/core';
+
 /**
  * Runtime security settings — operator-toggleable overrides that the enforcement middleware reads LIVE
  * on every request (so a change in the dashboard takes effect immediately). Held in memory: static config
@@ -14,6 +16,8 @@ export interface RuntimeSettings {
   dpop: { enabled: boolean };
   /** mTLS (RFC 8705) — stored intent; takes effect on the TLS listener (requires restart). */
   mtls: { enabled: boolean };
+  /** Declarative execution policy (ordered rules + default effect). */
+  policy: PolicyConfig;
 }
 
 export interface RuntimeSettingsStore {
@@ -27,6 +31,7 @@ export interface RuntimeSettingsPatch {
   jwks?: Partial<RuntimeSettings['jwks']>;
   dpop?: Partial<RuntimeSettings['dpop']>;
   mtls?: Partial<RuntimeSettings['mtls']>;
+  policy?: Partial<PolicyConfig>;
 }
 
 function clampInt(value: unknown, fallback: number): number {
@@ -36,6 +41,40 @@ function clampInt(value: unknown, fallback: number): number {
 
 function bool(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
+}
+
+const EFFECTS: PolicyEffect[] = ['allow', 'deny', 'require_approval'];
+const RISKS = ['low', 'med', 'high'];
+
+/** Validate + normalize an untrusted rule array, dropping malformed rules. */
+function sanitizeRules(input: unknown): PolicyRule[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const strArray = (v: unknown): string[] | undefined =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
+  const rules: PolicyRule[] = [];
+  for (const raw of input) {
+    const r = raw as Record<string, unknown>;
+    if (typeof r?.['id'] !== 'string' || !EFFECTS.includes(r['effect'] as PolicyEffect)) {
+      continue;
+    }
+    const rule: PolicyRule = { id: r['id'], effect: r['effect'] as PolicyEffect };
+    if (typeof r['description'] === 'string') rule.description = r['description'];
+    const modes = strArray(r['agentModes']);
+    if (modes) rule.agentModes = modes;
+    const caps = strArray(r['capabilities']);
+    if (caps) rule.capabilities = caps;
+    const plats = strArray(r['platforms']);
+    if (plats) rule.platforms = plats;
+    const ops = strArray(r['operations']);
+    if (ops) rule.operations = ops;
+    if (typeof r['minRisk'] === 'string' && RISKS.includes(r['minRisk'])) {
+      rule.minRisk = r['minRisk'] as 'low' | 'med' | 'high';
+    }
+    rules.push(rule);
+  }
+  return rules;
 }
 
 export function createRuntimeSettings(initial: RuntimeSettings): RuntimeSettingsStore {
@@ -72,6 +111,13 @@ export function createRuntimeSettings(initial: RuntimeSettings): RuntimeSettings
       }
       if (patch.mtls) {
         next.mtls = { enabled: bool(patch.mtls.enabled, next.mtls.enabled) };
+      }
+      if (patch.policy) {
+        next.policy = {
+          enabled: bool(patch.policy.enabled, next.policy.enabled),
+          defaultEffect: patch.policy.defaultEffect === 'deny' ? 'deny' : patch.policy.defaultEffect === 'allow' ? 'allow' : next.policy.defaultEffect,
+          rules: patch.policy.rules !== undefined ? sanitizeRules(patch.policy.rules) : next.policy.rules,
+        };
       }
       current = next;
       return structuredClone(current);

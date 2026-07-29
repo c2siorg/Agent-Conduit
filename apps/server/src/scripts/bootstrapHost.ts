@@ -26,7 +26,17 @@ async function main(): Promise<void> {
 
   const storage = new PostgresStorageDriver(driverConfig);
   await storage.init();
-  await storage.migrate();
+  // Keep stdout clean so `bootstrap:host > host.json` captures ONLY the JSON below. node-pg-migrate logs
+  // to console.log — route that (and any incidental logging) to stderr for the duration of migrate().
+  const originalLog = console.log;
+  console.log = (...args: unknown[]): void => {
+    process.stderr.write(`${args.map(String).join(' ')}\n`);
+  };
+  try {
+    await storage.migrate();
+  } finally {
+    console.log = originalLog;
+  }
 
   const kp = generateEd25519KeyPair();
   // Initial state is active (a bootstrap creation, not a transition).

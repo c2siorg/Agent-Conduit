@@ -3,7 +3,7 @@ import type { CapabilityGrantRepository, NewCapabilityGrant } from '../../reposi
 import type { Queryable } from './queryable.js';
 
 const COLS =
-  'id, agent_id, capability, connection_id, operation, status, constraints, ' +
+  'id, agent_id, capability, connection_id, operation, task_id, status, constraints, ' +
   'granted_by, denied_by, reason, expires_at, created_at';
 
 type Row = {
@@ -12,6 +12,7 @@ type Row = {
   capability: string;
   connection_id: string | null;
   operation: string | null;
+  task_id: string | null;
   status: GrantStatus;
   constraints: Record<string, Constraint>;
   granted_by: string | null;
@@ -28,6 +29,7 @@ function map(r: Row): CapabilityGrant {
     capability: r.capability,
     connectionId: r.connection_id,
     operation: r.operation,
+    taskId: r.task_id,
     status: r.status,
     constraints: r.constraints,
     grantedBy: r.granted_by,
@@ -50,14 +52,15 @@ export class PostgresCapabilityGrantRepository implements CapabilityGrantReposit
     ]);
     const { rows } = await this.db().query<Row>(
       `INSERT INTO capability_grants
-         (agent_id, capability, connection_id, operation, status, constraints, granted_by, expires_at)
-       VALUES ($1::uuid, $2, $3, $4, $5::grant_status, $6::jsonb, $7, $8)
+         (agent_id, capability, connection_id, operation, task_id, status, constraints, granted_by, expires_at)
+       VALUES ($1::uuid, $2, $3, $4, $5, $6::grant_status, $7::jsonb, $8, $9)
        RETURNING ${COLS}`,
       [
         input.agentId,
         input.capability,
         input.connectionId,
         input.operation,
+        input.taskId,
         input.status,
         JSON.stringify(input.constraints),
         input.grantedBy,
@@ -107,6 +110,13 @@ export class PostgresCapabilityGrantRepository implements CapabilityGrantReposit
     await this.db().query(
       `UPDATE capability_grants SET status = 'denied' WHERE agent_id = $1 AND status <> 'denied'`,
       [agentId],
+    );
+  }
+
+  async revokeByTask(taskId: string): Promise<void> {
+    await this.db().query(
+      `UPDATE capability_grants SET status = 'denied' WHERE task_id = $1 AND status <> 'denied'`,
+      [taskId],
     );
   }
 }

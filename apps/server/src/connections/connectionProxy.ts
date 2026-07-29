@@ -3,6 +3,8 @@ import type { ConnectorRegistry, ExecutionResult, PlatformCredential } from '@co
 import { ConduitError, ErrorCode } from '@conduit/core';
 import type { Agent, CapabilityGrant } from '@conduit/core';
 import type { StorageDriver } from '@conduit/storage';
+import type { PolicyEngine } from '../policy/policyEngine.js';
+import { riskLevel } from '../policy/risk.js';
 import type { CredentialCipher } from './credentialCipher.js';
 
 /**
@@ -19,6 +21,8 @@ export interface ConnectionProxyDeps {
   storage: StorageDriver;
   cipher: CredentialCipher;
   connectors: ConnectorRegistry;
+  /** Optional declarative policy engine (evaluated before execution). */
+  policy?: PolicyEngine;
 }
 
 function hashArgs(args: Record<string, unknown>): string {
@@ -26,7 +30,23 @@ function hashArgs(args: Record<string, unknown>): string {
 }
 
 export function createConnectionProxy(deps: ConnectionProxyDeps): ConnectionProxy {
-  const { storage, cipher, connectors } = deps;
+  const { storage, cipher, connectors, policy } = deps;
+  // Per (agent, connection) fixed-window counters for connection-grant rate limits. NOTE: in-process, so
+  // limits are per gateway instance — a multi-instance deployment needs a shared store for exact global
+  // limits. Expired buckets are swept lazily so the map does not grow unbounded.
+  const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+  let lastSweep = Date.now();
+  const sweep = (now: number): void => {
+    if (now - lastSweep < 60_000) {
+      return;
+    }
+    for (const [k, b] of rateBuckets) {
+      if (b.resetAt <= now) {
+        rateBuckets.delete(k);
+      }
+    }
+    lastSweep = now;
+  };
   return {
     async execute(agent, grant, args) {
       const start = Date.now();
@@ -46,6 +66,65 @@ export function createConnectionProxy(deps: ConnectionProxyDeps): ConnectionProx
           `operation "${operation}" is not in the allowed set for connection "${connection.name}"`,
           403,
         );
+      }
+      // Agent ↔ connector authorization: if the agent has ANY connector authorizations, the target
+      // connection must be among them and the operation permitted (empty allowed set = all ops). Agents
+      // with no connector authorizations are unrestricted here (backward compatible). Also enforce the
+      // per-(agent, connection) rate limit when set.
+      const connectorGrants = await storage.connectionGrants.listByAgent(agent.id);
+      if (connectorGrants.length > 0) {
+        const authz = connectorGrants.find((g) => g.connectionId === connectionId);
+        if (!authz) {
+          throw new ConduitError(
+            ErrorCode.capabilityNotGranted,
+            `agent is not authorized to use connection "${connection.name}"`,
+            403,
+          );
+        }
+        if (authz.allowedOperations.length > 0 && !authz.allowedOperations.includes(operation)) {
+          throw new ConduitError(
+            ErrorCode.capabilityNotGranted,
+            `operation "${operation}" is not permitted on connection "${connection.name}" for this agent`,
+            403,
+          );
+        }
+        if (authz.rateLimit !== null && authz.rateLimit > 0) {
+          const key = `${agent.id}:${connectionId}`;
+          const now = Date.now();
+          sweep(now);
+          let bucket = rateBuckets.get(key);
+          if (!bucket || bucket.resetAt <= now) {
+            bucket = { count: 0, resetAt: now + 60_000 };
+            rateBuckets.set(key, bucket);
+          }
+          bucket.count += 1;
+          if (bucket.count > authz.rateLimit) {
+            const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+            throw new ConduitError(ErrorCode.rateLimited, `connection rate limit exceeded`, 429, { retry_after: retryAfter });
+          }
+        }
+      }
+
+      // Declarative policy: evaluate the request (subject + resource + risk) before executing. A deny (or
+      // require_approval, until an approval workflow lands) blocks the call; the decision is audited.
+      if (policy) {
+        const risk = riskLevel(operation, grant.capability);
+        const decision = policy.evaluate({
+          agentMode: agent.mode,
+          capability: grant.capability,
+          platform: connection.platform,
+          operation,
+          risk,
+        });
+        if (decision.effect !== 'allow') {
+          // The denial is audited centrally by the execute route (as capability.denied).
+          const code = decision.effect === 'require_approval' ? ErrorCode.approvalRequired : ErrorCode.policyDenied;
+          const detail = decision.ruleId ? ` (rule ${decision.ruleId})` : ' (default effect)';
+          throw new ConduitError(code, `blocked by policy${detail}`, 403, {
+            ...(decision.ruleId ? { rule_id: decision.ruleId } : {}),
+            risk,
+          });
+        }
       }
       const driver = connectors.get(connection.platform);
       if (!driver) {
@@ -75,6 +154,7 @@ export function createConnectionProxy(deps: ConnectionProxyDeps): ConnectionProx
           capability: grant.capability,
           connectionId,
           operation,
+          taskId: grant.taskId,
           outcome,
           argsHash: hashArgs(args),
           durationMs: Date.now() - start,

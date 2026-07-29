@@ -45,6 +45,25 @@ export function useConnections(): UseQueryResult<ConnectionSummary[]> {
   });
 }
 
+/** The connectors an agent is authorized to use (drives the wiring view). */
+export function useAgentConnections(agentId: string): UseQueryResult<import('./client').AgentConnection[]> {
+  return useQuery({
+    queryKey: ['agentConnections', agentId],
+    queryFn: () => api.listAgentConnections(agentId),
+    enabled: Boolean(agentId),
+  });
+}
+
+/** Per-agent blast radius (risk column on the agents list). */
+export function useAgentRisk(): UseQueryResult<import('./client').AgentRisk[]> {
+  return useQuery({ queryKey: ['agentRisk'], queryFn: () => api.listAgentRisk(), refetchInterval: 10000 });
+}
+
+/** Compliance posture (control catalog mapped to live enforcement). */
+export function useCompliance(): UseQueryResult<import('./client').ComplianceReport> {
+  return useQuery({ queryKey: ['compliance'], queryFn: () => api.getCompliance(), staleTime: 30000 });
+}
+
 /** Registered tools (Token Router). */
 export function useTools(): UseQueryResult<ToolSummary[]> {
   return useQuery({ queryKey: ['tools'], queryFn: () => api.listTools(), refetchInterval: 10000 });

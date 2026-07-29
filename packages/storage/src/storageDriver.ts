@@ -6,6 +6,7 @@ import type {
   ConnectionRepository,
   HostRepository,
   JtiCacheRepository,
+  TaskRepository,
   ToolRepository,
 } from './repositories.js';
 
@@ -35,6 +36,7 @@ export interface StorageDriver {
   readonly hosts: HostRepository;
   readonly agents: AgentRepository;
   readonly capabilityGrants: CapabilityGrantRepository;
+  readonly tasks: TaskRepository;
   readonly connections: ConnectionRepository;
   readonly connectionGrants: ConnectionGrantRepository;
   readonly tools: ToolRepository;
