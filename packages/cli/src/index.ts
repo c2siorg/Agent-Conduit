@@ -21,8 +21,11 @@
  *
  * Global: --url <baseUrl> (env CONDUIT_URL, default http://localhost:8443).
  */
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { createServer, request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { parseArgs } from 'node:util';
 import { createJwtSigner, generateEd25519KeyPair, jwkThumbprint } from '@conduit/crypto';
 import type { Jwk } from '@conduit/core';
@@ -47,6 +50,10 @@ function out(value: unknown): void {
 function opt(ctx: Ctx, name: string): string | undefined {
   const v = ctx.opts[name];
   return typeof v === 'string' ? v : undefined;
+}
+
+function flag(ctx: Ctx, name: string): boolean {
+  return ctx.opts[name] === true;
 }
 
 function requireOpt(ctx: Ctx, name: string): string {
@@ -146,6 +153,9 @@ const COMMANDS: Record<string, (ctx: Ctx) => Promise<void>> = {
     if (opt(ctx, 'description')) {
       body['description'] = opt(ctx, 'description');
     }
+    if (opt(ctx, 'project')) {
+      body['project_id'] = opt(ctx, 'project');
+    }
     const res = await api<Record<string, unknown>>(ctx, 'POST', '/agent/register', await hostJwt(ctx), body);
     const outFile = opt(ctx, 'out');
     if (outFile) {
@@ -190,6 +200,7 @@ const COMMANDS: Record<string, (ctx: Ctx) => Promise<void>> = {
         auth_method: opt(ctx, 'auth-method') ?? 'bearer',
         secret: parseJsonOpt(ctx, 'secret'),
         allowed_operations: operations ? operations.split(',').map((s) => s.trim()).filter(Boolean) : [],
+        ...(opt(ctx, 'project') ? { project_id: opt(ctx, 'project') } : {}),
       }),
     );
   },
@@ -207,6 +218,12 @@ const COMMANDS: Record<string, (ctx: Ctx) => Promise<void>> = {
   },
   async 'tool:list'(ctx) {
     out(await api(ctx, 'GET', '/tools'));
+  },
+  async 'project:list'(ctx) {
+    out(await api(ctx, 'GET', '/projects'));
+  },
+  async 'project:create'(ctx) {
+    out(await api(ctx, 'POST', '/projects', await hostJwt(ctx), { name: requireOpt(ctx, 'name'), description: opt(ctx, 'description') }));
   },
   async 'audit:'(ctx) {
     const params = new URLSearchParams();
@@ -226,12 +243,147 @@ const COMMANDS: Record<string, (ctx: Ctx) => Promise<void>> = {
   },
 };
 
+/**
+ * `conduit run -- <agent-command> [args...]` — transparent, no-SDK onboarding.
+ *
+ * Registers a FRESH agent (its own Ed25519 keypair, generated locally), starts a local proxy that mints a
+ * short-lived agent JWT PER REQUEST and forwards to the gateway, then spawns the agent command with
+ * CONDUIT_URL pointed at the proxy. The wrapped agent makes plain HTTP calls to the local proxy with NO
+ * token; Conduit injects identity. AAP is fully intact — real per-agent JWTs go through the 5-stage
+ * pipeline. On exit the agent is revoked (zero standing access).
+ */
+async function runAgent(ctx: Ctx, command: string[]): Promise<void> {
+  if (command.length === 0 || !command[0]) {
+    fail('usage: conduit run [--project <id>] -- <agent-command> [args...]');
+  }
+  const key = loadHostKey(ctx);
+  const issuer = await discoverIssuer(ctx.url);
+  const hostThumb = jwkThumbprint({ kty: key.kty, crv: key.crv, x: key.x } as Jwk);
+
+  const agent = generateEd25519KeyPair();
+  const reg = await api<{ agent_id: string }>(ctx, 'POST', '/agent/register', await hostJwt(ctx), {
+    agent_public_key: agent.publicKeyJwk,
+    mode: opt(ctx, 'mode') ?? 'delegated',
+    name: opt(ctx, 'name') ?? 'conduit-run',
+    ...(opt(ctx, 'project') ? { project_id: opt(ctx, 'project') } : {}),
+  });
+  const agentId = reg.agent_id;
+  const mintJwt = (): Promise<string> => {
+    const now = Math.floor(Date.now() / 1000);
+    return signer.sign(
+      'agent+jwt',
+      { iss: hostThumb, sub: agentId, aud: issuer, iat: now, exp: now + 60, jti: randomUUID() } as never,
+      agent.privateKeyJwk as never,
+    );
+  };
+
+  const upstream = new URL(ctx.url);
+  const doRequest = upstream.protocol === 'https:' ? httpsRequest : httpRequest;
+
+  // The proxy binds to loopback, but any OTHER local process could still reach it and act with the agent's
+  // identity. Gate it with a per-session shared secret injected into the child's env (CONDUIT_TOKEN). The
+  // wrapped agent (or the SDK) forwards it as `x-conduit-token`. `--open` drops the check for agents that
+  // cannot send a header, trading that protection for pure transparency. AAP is unaffected either way — the
+  // real per-request agent JWT still goes through the full 5-stage pipeline upstream.
+  const openMode = flag(ctx, 'open');
+  const proxyToken = openMode ? '' : randomUUID();
+
+  const proxy = createServer((req, res) => {
+    void (async () => {
+      if (!openMode && req.headers['x-conduit-token'] !== proxyToken) {
+        res.writeHead(401, { 'content-type': 'application/json' }).end('{"error":"proxy_unauthorized"}');
+        return;
+      }
+      const jwt = await mintJwt();
+      // Strip the shared secret before forwarding; it is proxy-local and must never reach the gateway.
+      const { 'x-conduit-token': _drop, ...rest } = req.headers;
+      const headers = { ...rest, host: upstream.host, authorization: `Bearer ${jwt}` };
+      const up = doRequest(
+        {
+          protocol: upstream.protocol,
+          hostname: upstream.hostname,
+          port: upstream.port || (upstream.protocol === 'https:' ? 443 : 80),
+          method: req.method,
+          path: req.url,
+          headers,
+        },
+        (r) => {
+          res.writeHead(r.statusCode ?? 502, r.headers);
+          r.pipe(res);
+        },
+      );
+      up.on('error', () => res.writeHead(502, { 'content-type': 'application/json' }).end('{"error":"bad_gateway"}'));
+      req.pipe(up);
+    })().catch(() => res.writeHead(500).end());
+  });
+
+  await new Promise<void>((r) => proxy.listen(0, '127.0.0.1', r));
+  const addr = proxy.address();
+  const port = addr && typeof addr === 'object' ? addr.port : 0;
+  const proxyUrl = `http://127.0.0.1:${port}`;
+  process.stderr.write(
+    `conduit: agent ${agentId} — proxy ${proxyUrl} ` +
+      (openMode
+        ? '(open mode: no proxy token — any local process can use this identity)\n'
+        : '(identity injected; wrapped agent authenticates to the proxy with CONDUIT_TOKEN)\n'),
+  );
+
+  let cleaned = false;
+  const cleanup = async (): Promise<void> => {
+    if (cleaned) return;
+    cleaned = true;
+    try {
+      // Explicit revoke = zero standing access the instant the session ends. The agent's short session TTL
+      // (see security.jwtExpiry) is the backstop if this best-effort call can't reach the gateway (e.g. the
+      // machine is killed): the identity expires on its own rather than lingering as a usable credential.
+      await api(ctx, 'POST', '/agent/revoke', await hostJwt(ctx), { agent_id: agentId });
+    } catch {
+      /* best effort — session TTL is the backstop */
+    }
+    proxy.close();
+  };
+
+  const child = spawn(command[0], command.slice(1), {
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      CONDUIT_URL: proxyUrl,
+      CONDUIT_GATEWAY_URL: ctx.url,
+      CONDUIT_AGENT_ID: agentId,
+      ...(openMode ? {} : { CONDUIT_TOKEN: proxyToken }),
+    },
+  });
+  const forward = (sig: NodeJS.Signals) => {
+    if (!child.killed) child.kill(sig);
+  };
+  // Forward the common termination signals so the child (and thus cleanup) always runs; also revoke on an
+  // unexpected crash of the wrapper itself so we never leave a live, unrevoked agent behind.
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'] as const) {
+    process.on(sig, () => forward(sig));
+  }
+  process.on('uncaughtException', (e) => {
+    void cleanup().then(() => fail(`conduit run crashed: ${e instanceof Error ? e.message : String(e)}`));
+  });
+  child.on('error', (e) => {
+    void cleanup().then(() => fail(`failed to start "${command[0]}": ${e.message}`));
+  });
+  child.on('exit', (code) => {
+    void cleanup().then(() => {
+      process.stderr.write(`conduit: agent ${agentId} revoked.\n`);
+      process.exit(code ?? 0);
+    });
+  });
+}
+
 const HELP = `conduit - Agent Conduit admin CLI
 
 Commands:
-  agent list | register | revoke <id> | rotate-key <id>
+  run [--project <id>] [--open] -- <agent-command> [args...]   run an agent under a transparent identity proxy
+                                                              (--open drops the local proxy-token check)
+  agent list | register | revoke <id> | rotate-key <id>   [--project <id>]
   grant --agent <id> --capability <c> [--connection <id> --operation <op>]
-  connection register | list
+  connection register [--project <id>] | list
+  project list | create --name <n>
   tool register | list
   audit [--agent <id>] [--outcome <o>]
   metrics
@@ -262,6 +414,8 @@ async function main(): Promise<void> {
       config: { type: 'string' },
       outcome: { type: 'string' },
       out: { type: 'string' },
+      project: { type: 'string' },
+      open: { type: 'boolean' },
     },
   });
 
@@ -280,6 +434,12 @@ async function main(): Promise<void> {
     opts: values as Record<string, string | boolean | undefined>,
     positionals,
   };
+
+  // `conduit run -- <agent-command>` runs an agent under a transparent identity-injecting proxy.
+  if (group === 'run') {
+    await runAgent(ctx, positionals.slice(1));
+    return;
+  }
 
   const handler = COMMANDS[`${group}:${sub}`];
   if (!handler) {

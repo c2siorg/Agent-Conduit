@@ -6,6 +6,7 @@ import { Toaster } from './Toaster';
 export type NavKey =
   | 'getStarted'
   | 'dashboard'
+  | 'projects'
   | 'agents'
   | 'topology'
   | 'wiring'
@@ -27,6 +28,7 @@ const NAV_GROUPS: ReadonlyArray<{ label: string; items: ReadonlyArray<NavItem> }
     label: 'Operations',
     items: [
       { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+      { key: 'projects', label: 'Projects', icon: 'projects' },
       { key: 'agents', label: 'Agent Management', icon: 'agents' },
       { key: 'topology', label: 'Topology & Risk', icon: 'topology' },
       { key: 'wiring', label: 'Access Wiring', icon: 'wiring' },

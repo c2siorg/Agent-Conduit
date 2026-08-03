@@ -44,6 +44,8 @@ export interface Host {
 export interface Agent {
   id: string;
   hostId: string;
+  /** Project this agent belongs to (Conduit extension); null = unassigned/global. */
+  projectId: string | null;
   /** Operator-facing label + note (NOT part of the AAP wire protocol; treat as untrusted display data). */
   name: string | null;
   description: string | null;

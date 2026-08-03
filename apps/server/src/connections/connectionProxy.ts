@@ -58,6 +58,16 @@ export function createConnectionProxy(deps: ConnectionProxyDeps): ConnectionProx
       if (!connection) {
         throw new ConduitError(ErrorCode.invalidRequest, 'connection not found', 404);
       }
+      // Per-project credential isolation: a project-scoped connection may only be used by an agent in the
+      // SAME project. Unassigned (global) connections are usable by any agent. Agents can't reach across
+      // projects to another project's credentials.
+      if (connection.projectId && connection.projectId !== agent.projectId) {
+        throw new ConduitError(
+          ErrorCode.capabilityNotGranted,
+          `connection "${connection.name}" belongs to a different project`,
+          403,
+        );
+      }
       // Connection-level operation allowlist: a non-empty list bounds what ANY grant on this connection may
       // execute (defense in depth over the per-grant operation). Empty = all operations permitted.
       if (connection.allowedOperations.length > 0 && !connection.allowedOperations.includes(operation)) {

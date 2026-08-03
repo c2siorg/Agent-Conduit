@@ -946,6 +946,23 @@ body {
   color: var(--text);
 }
 
+/* Project chips */
+.projChip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.projChip-global {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: transparent;
+  font-weight: 500;
+}
+
 /* Toasts */
 .toaster {
   position: fixed;

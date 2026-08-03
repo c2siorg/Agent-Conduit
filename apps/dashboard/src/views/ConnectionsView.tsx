@@ -6,10 +6,11 @@ import {
   type ConnectorInfo,
   type CredentialTestResult,
 } from '../api/client';
-import { useConnections, useConnectors } from '../api/queries';
+import { useConnections, useConnectors, useProjects } from '../api/queries';
 import type { NavKey } from '../components/AppShell';
 import { ConnectorAvatar, ConnectorPicker } from '../components/ConnectorPicker';
 import { Icon } from '../components/Icon';
+import { ProjectChip } from '../components/ProjectChip';
 import { OperatorKeyNotice } from '../components/OperatorKeyNotice';
 import { parseHostKey, signHostJwt } from '../lib/agentCrypto';
 import { useOperatorKey } from '../lib/useOperatorKey';
@@ -73,6 +74,7 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
 
   const { key: hostKey, loaded } = useOperatorKey();
   const connectors = useConnectors();
+  const projects = useProjects().data ?? [];
   const connectorList = connectors.data ?? [];
   const labelFor = (platform: string): string =>
     connectorList.find((c) => c.platform === platform)?.label ?? platform;
@@ -85,6 +87,7 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
   const [secret, setSecret] = useState('');
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [rawMode, setRawMode] = useState(false);
+  const [project, setProject] = useState('');
   const [ops, setOps] = useState<string[]>([]);
   const [opDraft, setOpDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -98,6 +101,7 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
   const [editName, setEditName] = useState('');
   const [editOps, setEditOps] = useState<string[]>([]);
   const [editSecret, setEditSecret] = useState('');
+  const [editProject, setEditProject] = useState('');
   const [rowError, setRowError] = useState<string | null>(null);
 
   async function hostJwt(): Promise<string> {
@@ -155,6 +159,7 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
     setEditName(c.name);
     setEditOps(c.allowed_operations);
     setEditSecret('');
+    setEditProject(c.project_id ?? '');
     setRowError(null);
   }
 
@@ -177,6 +182,7 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
         name: editName.trim(),
         allowedOperations: editOps,
         ...(secretPatch ? { secret: secretPatch } : {}),
+        ...((editProject || null) !== (editing.project_id ?? null) ? { projectId: editProject || null } : {}),
       });
       setEditing(null);
       await queryClient.invalidateQueries({ queryKey: ['connections'] });
@@ -265,6 +271,7 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
         authMethod,
         secret: parsedSecret,
         allowedOperations: ops,
+        projectId: project || null,
       });
       // Auto-test the freshly registered connection so the operator immediately knows if it works.
       let verdict = 'The secret is encrypted at rest.';
@@ -354,6 +361,18 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
               {authOptions.map((m) => (
                 <option key={m} value={m}>
                   {m}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Project — a project-scoped credential is isolated to agents in that project</span>
+            <select value={project} onChange={(e) => setProject(e.target.value)}>
+              <option value="">Unassigned (global)</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
                 </option>
               ))}
             </select>
@@ -494,6 +513,17 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
             />
           </label>
           <label className="field">
+            <span>Project</span>
+            <select value={editProject} onChange={(e) => setEditProject(e.target.value)}>
+              <option value="">Global (no project)</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
             <span>Rotate secret (JSON) — leave blank to keep the current one</span>
             <textarea rows={2} className="mono" value={editSecret} onChange={(e) => setEditSecret(e.target.value)} placeholder={hintFor(editing.platform)} />
           </label>
@@ -515,6 +545,7 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
             <tr>
               <th>Connection</th>
               <th>Platform</th>
+              <th>Project</th>
               <th>Allowed operations</th>
               <th>Test</th>
               <th>Created</th>
@@ -536,6 +567,9 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
                       <ConnectorAvatar platform={c.platform} label={labelFor(c.platform)} size={24} />
                       {labelFor(c.platform)}
                     </span>
+                  </td>
+                  <td>
+                    <ProjectChip projectId={c.project_id} />
                   </td>
                   <td className="cellDesc">{c.allowed_operations.length ? c.allowed_operations.join(', ') : '-'}</td>
                   <td>
@@ -579,7 +613,7 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
             })}
             {conns.length === 0 && (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={7} className="muted">
                   No connections registered yet.
                 </td>
               </tr>

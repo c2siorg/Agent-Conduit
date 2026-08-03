@@ -1,6 +1,6 @@
 import { decodeJwt, type JwtVerifier } from '@conduit/crypto';
 import { ConduitError, ErrorCode } from '@conduit/core';
-import type { Agent, AgentMode, CapabilityGrant, Constraint, Host, Jwk, Task } from '@conduit/core';
+import type { Agent, AgentMode, CapabilityGrant, Constraint, Host, Jwk, Project, Task } from '@conduit/core';
 import type { StorageDriver } from '@conduit/storage';
 import type { StateMachine } from './stateMachine.js';
 
@@ -28,6 +28,8 @@ export interface RegisterAgentInput {
   /** Operator-facing label + note (not part of the AAP protocol). */
   name?: string;
   description?: string;
+  /** Project this agent belongs to (Conduit extension); null/omitted = unassigned. */
+  projectId?: string | null;
 }
 
 /** The three lifetime clocks, in seconds, applied on activation (AAP §2.4). */
@@ -124,10 +126,32 @@ export interface IdentityService {
   completeTask(hostId: string, taskId: string): Promise<Task>;
   /** All tasks (admin/dashboard), with status normalized to `expired` when the TTL has elapsed. */
   listTasks(): Promise<Task[]>;
+  /** Create a project (governance boundary). Audited. */
+  createProject(hostId: string, name: string, description: string | null): Promise<Project>;
+  listProjects(): Promise<Project[]>;
+  /** Delete a project. Blocked while agents/connections are still assigned (would widen access). Audited. */
+  deleteProject(hostId: string, id: string): Promise<void>;
+  /** Move an agent to a project (or null = global). Audited. */
+  setAgentProject(hostId: string, agentId: string, projectId: string | null): Promise<void>;
 }
 
 export function createIdentityService(deps: IdentityServiceDeps): IdentityService {
   const { storage, stateMachine, lifetimes, verifier, issuer } = deps;
+
+  // Audit a governance change (project create/delete, agent reassignment).
+  const auditProject = (hostId: string, eventType: string, agentId: string | null): Promise<void> =>
+    storage.auditLog.append({
+      agentId,
+      hostId,
+      eventType,
+      capability: null,
+      connectionId: null,
+      operation: null,
+      taskId: null,
+      outcome: 'success',
+      argsHash: null,
+      durationMs: null,
+    });
 
   return {
     async registerAgent(hostId, input) {
@@ -143,6 +167,7 @@ export function createIdentityService(deps: IdentityServiceDeps): IdentityServic
       // (Registration idempotency + partial capability approval land in Sprint 2.)
       const created = await storage.agents.create({
         hostId,
+        projectId: input.projectId ?? null,
         publicKeyJwk: input.publicKeyJwk,
         jwksUrl: null,
         name: input.name ?? null,
@@ -207,6 +232,18 @@ export function createIdentityService(deps: IdentityServiceDeps): IdentityServic
       }
       if (agent.hostId !== hostId) {
         throw new ConduitError(ErrorCode.unauthorized, 'agent does not belong to this host', 403);
+      }
+      // Reject a cross-project mapping up front (rather than only failing at execute): a project-scoped
+      // connection can't be granted to an agent in a different project.
+      if (input.connectionId) {
+        const connection = await storage.connections.findById(input.connectionId);
+        if (connection && connection.projectId && connection.projectId !== agent.projectId) {
+          throw new ConduitError(
+            ErrorCode.invalidRequest,
+            `connection "${connection.name}" belongs to a different project than this agent`,
+            400,
+          );
+        }
       }
       return storage.capabilityGrants.upsert({
         agentId: input.agentId,
@@ -441,6 +478,45 @@ export function createIdentityService(deps: IdentityServiceDeps): IdentityServic
       return page.items.map((t) =>
         t.status === 'active' && t.expiresAt && t.expiresAt.getTime() <= now ? { ...t, status: 'expired' as const } : t,
       );
+    },
+
+    async createProject(hostId, name, description) {
+      const project = await storage.projects.create({ name, description });
+      await auditProject(hostId, 'project.create', null);
+      return project;
+    },
+    async listProjects() {
+      return storage.projects.list();
+    },
+    async deleteProject(hostId, id) {
+      // Deleting a project would SET NULL its members -> making project-scoped credentials global (a
+      // WIDENING of access). Block while it still has members; the operator must reassign them first.
+      const [agentsPage, connsPage] = await Promise.all([
+        storage.agents.list({ limit: 1000 }),
+        storage.connections.list({ limit: 1000 }),
+      ]);
+      const agentCount = agentsPage.items.filter((a) => a.projectId === id).length;
+      const connCount = connsPage.items.filter((c) => c.projectId === id).length;
+      if (agentCount + connCount > 0) {
+        throw new ConduitError(
+          ErrorCode.invalidRequest,
+          `project still has ${agentCount} agent(s) and ${connCount} connection(s); reassign them before deleting (delete would make their credentials global)`,
+          409,
+        );
+      }
+      await storage.projects.delete(id);
+      await auditProject(hostId, 'project.delete', null);
+    },
+    async setAgentProject(hostId, agentId, projectId) {
+      const agent = await storage.agents.findById(agentId);
+      if (!agent) {
+        throw new ConduitError(ErrorCode.agentNotFound, 'agent not found', 404);
+      }
+      if (agent.hostId !== hostId) {
+        throw new ConduitError(ErrorCode.unauthorized, 'agent does not belong to this host', 403);
+      }
+      await storage.agents.setProject(agentId, projectId);
+      await auditProject(hostId, 'agent.reassign', agentId);
     },
   };
 }

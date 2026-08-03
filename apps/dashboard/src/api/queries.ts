@@ -59,6 +59,11 @@ export function useAgentRisk(): UseQueryResult<import('./client').AgentRisk[]> {
   return useQuery({ queryKey: ['agentRisk'], queryFn: () => api.listAgentRisk(), refetchInterval: 10000 });
 }
 
+/** Governance projects. */
+export function useProjects(): UseQueryResult<import('./client').Project[]> {
+  return useQuery({ queryKey: ['projects'], queryFn: () => api.listProjects(), staleTime: 30000 });
+}
+
 /** Compliance posture (control catalog mapped to live enforcement). */
 export function useCompliance(): UseQueryResult<import('./client').ComplianceReport> {
   return useQuery({ queryKey: ['compliance'], queryFn: () => api.getCompliance(), staleTime: 30000 });

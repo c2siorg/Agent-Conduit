@@ -11,6 +11,8 @@ export interface RegisterConnectionInput {
   /** Raw credential material - encrypted (AES-256-GCM) immediately; never persisted in plaintext. */
   secret: Record<string, string>;
   allowedOperations: string[];
+  /** Project this connection belongs to (Conduit extension); null/omitted = unassigned/global. */
+  projectId?: string | null;
 }
 
 /** Fields an admin may change on a connection. Providing `secret` rotates the encrypted credential. */
@@ -19,6 +21,8 @@ export interface UpdateConnectionInput {
   allowedOperations?: string[];
   authMethod?: string;
   secret?: Record<string, string>;
+  /** Move the connection to a project (or null = global). */
+  projectId?: string | null;
 }
 
 /**
@@ -57,6 +61,7 @@ export function createConnectionRegistryService(
       const credentialEncrypted = cipher.encrypt(payload);
       return storage.connections.create({
         name: input.name,
+        projectId: input.projectId ?? null,
         platform: input.platform,
         credentialEncrypted,
         allowedOperations: input.allowedOperations,
@@ -73,12 +78,20 @@ export function createConnectionRegistryService(
       if (!existing) {
         throw new ConduitError(ErrorCode.invalidRequest, 'connection not found', 404);
       }
-      const patch: { name?: string; allowedOperations?: string[]; credentialEncrypted?: Uint8Array } = {};
+      const patch: {
+        name?: string;
+        allowedOperations?: string[];
+        credentialEncrypted?: Uint8Array;
+        projectId?: string | null;
+      } = {};
       if (input.name !== undefined) {
         patch.name = input.name;
       }
       if (input.allowedOperations !== undefined) {
         patch.allowedOperations = input.allowedOperations;
+      }
+      if (input.projectId !== undefined) {
+        patch.projectId = input.projectId;
       }
       if (input.secret !== undefined) {
         // Re-encrypt the whole credential (auth method + secret). Plaintext never persists.
@@ -139,6 +152,14 @@ export function createConnectionRegistryService(
       const connection = await storage.connections.findById(connectionId);
       if (!connection) {
         throw new ConduitError(ErrorCode.invalidRequest, 'connection not found', 404);
+      }
+      // Cross-project guard: a project-scoped connection can only be attached to an agent in that project.
+      if (connection.projectId && connection.projectId !== agent.projectId) {
+        throw new ConduitError(
+          ErrorCode.invalidRequest,
+          `connection "${connection.name}" belongs to a different project than this agent`,
+          400,
+        );
       }
       // Validate the scoped operations against what the connection actually permits: its registration-time
       // allowlist if set, otherwise the driver's concrete operations (placeholder names like the generic

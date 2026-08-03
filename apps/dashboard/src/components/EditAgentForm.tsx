@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { createDashboardApi, type AgentSummary } from '../api/client';
+import { useProjects } from '../api/queries';
 import { parseHostKey, signHostJwt } from '../lib/agentCrypto';
 
 const api = createDashboardApi();
@@ -16,8 +17,10 @@ export function EditAgentForm({
   onClose: () => void;
 }): JSX.Element {
   const queryClient = useQueryClient();
+  const projects = useProjects().data ?? [];
   const [name, setName] = useState(agent.name ?? '');
   const [description, setDescription] = useState(agent.description ?? '');
+  const [projectId, setProjectId] = useState<string>(agent.project_id ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +35,12 @@ export function EditAgentForm({
       const issuer = await api.getIssuer();
       const hostJwt = await signHostJwt(hostJwk, issuer);
       await api.updateAgent(hostJwt, agent.id, name.trim(), description.trim());
+      const nextProject = projectId || null;
+      if (nextProject !== (agent.project_id ?? null)) {
+        // Reassigning is a governance change: a project-scoped connection the agent already has a grant
+        // for stops resolving at execute time once it leaves that project (execute-time isolation).
+        await api.setAgentProject(hostJwt, agent.id, nextProject);
+      }
       await queryClient.invalidateQueries({ queryKey: ['agents'] });
       onClose();
     } catch (e) {
@@ -62,6 +71,17 @@ export function EditAgentForm({
       <label className="field">
         <span>Description</span>
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </label>
+      <label className="field">
+        <span>Project</span>
+        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <option value="">Global (no project)</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
       </label>
       {error && <div className="errorBox">{error}</div>}
       <button type="button" className="primaryBtn" disabled={busy} onClick={() => void save()}>
