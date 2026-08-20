@@ -44,6 +44,7 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
           agents: page.items.map((a) => ({
             id: a.id,
             host_id: a.hostId,
+            project_id: a.projectId,
             name: a.name,
             description: a.description,
             status: a.status,
@@ -67,6 +68,7 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
       auth_method?: string;
       secret?: Record<string, string>;
       allowed_operations?: string[];
+      project_id?: string;
     };
     if (!body.name || !body.platform || !body.secret) {
       next(new ConduitError(ErrorCode.invalidRequest, 'name, platform, and secret are required', 400));
@@ -79,6 +81,7 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
         ...(body.auth_method ? { authMethod: body.auth_method } : {}),
         secret: body.secret,
         allowedOperations: body.allowed_operations ?? [],
+        projectId: body.project_id ?? null,
       })
       .then((c) => {
         res.status(201).json({ connection_id: c.id, name: c.name, platform: c.platform });
@@ -94,6 +97,7 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
       allowed_operations?: string[];
       auth_method?: string;
       secret?: Record<string, string>;
+      project_id?: string | null;
     };
     deps.connectionRegistry
       .updateConnection(id, {
@@ -101,6 +105,7 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
         ...(body.allowed_operations !== undefined ? { allowedOperations: body.allowed_operations } : {}),
         ...(body.auth_method !== undefined ? { authMethod: body.auth_method } : {}),
         ...(body.secret !== undefined ? { secret: body.secret } : {}),
+        ...(body.project_id !== undefined ? { projectId: body.project_id } : {}),
       })
       .then((c) => {
         res.json({ connection_id: c.id, name: c.name, platform: c.platform, allowed_operations: c.allowedOperations });
@@ -137,6 +142,7 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
           connections: conns.map((c) => ({
             id: c.id,
             name: c.name,
+            project_id: c.projectId,
             platform: c.platform,
             allowed_operations: c.allowedOperations,
             created_at: c.createdAt,

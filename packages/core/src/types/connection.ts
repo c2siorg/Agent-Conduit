@@ -5,6 +5,8 @@
 export interface Connection {
   id: string;
   name: string;
+  /** Project this connection belongs to (Conduit extension); null = unassigned/global. */
+  projectId: string | null;
   /** Connector id: 'slack' | 'github' | 'rest' | … */
   platform: string;
   /** AES-256-GCM ciphertext — Postgres stores ONLY this, never plaintext. */

@@ -10,6 +10,7 @@ export * from './types/capability.js';
 export * from './types/connection.js';
 export * from './types/task.js';
 export * from './types/policy.js';
+export * from './types/project.js';
 export * from './types/audit.js';
 export * from './types/discovery.js';
 export * from './errors/errorCodes.js';

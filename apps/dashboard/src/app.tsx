@@ -7,6 +7,7 @@ import { ComplianceView } from './views/ComplianceView';
 import { DashboardView } from './views/DashboardView';
 import { GetStartedView } from './views/GetStartedView';
 import { PolicyView } from './views/PolicyView';
+import { ProjectsView } from './views/ProjectsView';
 import { SettingsView } from './views/SettingsView';
 import { ToolsView } from './views/ToolsView';
 import { TopologyView } from './views/TopologyView';
@@ -15,6 +16,7 @@ import { WiringView } from './views/WiringView';
 const NAV_KEYS: readonly NavKey[] = [
   'getStarted',
   'dashboard',
+  'projects',
   'agents',
   'topology',
   'wiring',
@@ -86,6 +88,8 @@ export function App(): JSX.Element {
         return <SettingsView />;
       case 'topology':
         return <TopologyView />;
+      case 'projects':
+        return <ProjectsView onNavigate={navigate} />;
       case 'wiring':
         return <WiringView onNavigate={navigate} />;
       case 'policy':

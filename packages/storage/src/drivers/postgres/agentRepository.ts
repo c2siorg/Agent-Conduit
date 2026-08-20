@@ -5,7 +5,7 @@ import type { Queryable } from './queryable.js';
 import { clampLimit, decodeCursor, encodeCursor, mapAgentRow, type AgentRow } from './rowMappers.js';
 
 const COLS =
-  'id, host_id, public_key_jwk, jwks_url, name, description, status, mode, activated_at, ' +
+  'id, host_id, project_id, public_key_jwk, jwks_url, name, description, status, mode, activated_at, ' +
   'session_expires_at, max_lifetime_expires_at, absolute_expires_at, created_at, updated_at';
 
 /** Postgres-backed {@link AgentRepository}. */
@@ -14,11 +14,12 @@ export class PostgresAgentRepository implements AgentRepository {
 
   async create(input: NewAgent): Promise<Agent> {
     const { rows } = await this.db().query<AgentRow>(
-      `INSERT INTO agents (host_id, public_key_jwk, jwks_url, name, description, mode, status)
-       VALUES ($1::uuid, $2::jsonb, $3, $4, $5, $6::agent_mode, $7::agent_state)
+      `INSERT INTO agents (host_id, project_id, public_key_jwk, jwks_url, name, description, mode, status)
+       VALUES ($1::uuid, $2::uuid, $3::jsonb, $4, $5, $6, $7::agent_mode, $8::agent_state)
        RETURNING ${COLS}`,
       [
         input.hostId,
+        input.projectId,
         input.publicKeyJwk ? JSON.stringify(input.publicKeyJwk) : null,
         input.jwksUrl,
         input.name,
@@ -94,6 +95,10 @@ export class PostgresAgentRepository implements AgentRepository {
       id,
       JSON.stringify(publicKeyJwk),
     ]);
+  }
+
+  async setProject(id: string, projectId: string | null): Promise<void> {
+    await this.db().query(`UPDATE agents SET project_id = $2::uuid, updated_at = now() WHERE id = $1`, [id, projectId]);
   }
 
   async updateMetadata(id: string, name: string | null, description: string | null): Promise<void> {

@@ -32,6 +32,7 @@ export function identityRoutes(deps: IdentityRoutesDeps): Router {
       capabilities?: string[];
       name?: string;
       description?: string;
+      project_id?: string;
     };
     if (!body.agent_public_key) {
       next(new ConduitError(ErrorCode.invalidRequest, 'agent_public_key is required', 400));
@@ -42,6 +43,7 @@ export function identityRoutes(deps: IdentityRoutesDeps): Router {
       publicKeyJwk: body.agent_public_key,
       mode,
       requestedCapabilities: body.capabilities ?? [],
+      projectId: body.project_id ?? null,
     };
     if (typeof body.name === 'string' && body.name.trim()) {
       input.name = body.name.trim();
@@ -184,6 +186,71 @@ export function identityRoutes(deps: IdentityRoutesDeps): Router {
       .introspect(body.token)
       .then((result) => {
         res.json(result);
+      })
+      .catch(next);
+  });
+
+  // Projects (governance boundaries for credential isolation). List is public (no secrets); writes host-auth.
+  router.get('/projects', (_req, res, next) => {
+    deps.identityService
+      .listProjects()
+      .then((projects) => {
+        res.json({ projects: projects.map((p) => ({ id: p.id, name: p.name, description: p.description, created_at: p.createdAt })) });
+      })
+      .catch(next);
+  });
+
+  router.post('/projects', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    const body = (req.body ?? {}) as { name?: string; description?: string };
+    if (!body.name || !body.name.trim()) {
+      next(new ConduitError(ErrorCode.invalidRequest, 'name is required', 400));
+      return;
+    }
+    deps.identityService
+      .createProject(host.id, body.name.trim(), body.description?.trim() || null)
+      .then((p) => {
+        res.status(201).json({ id: p.id, name: p.name });
+      })
+      .catch(next);
+  });
+
+  router.delete('/projects/:id', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    deps.identityService
+      .deleteProject(host.id, req.params['id'] ?? '')
+      .then(() => {
+        res.json({ deleted: true });
+      })
+      .catch(next);
+  });
+
+  // Reassign an agent to a project (or null = global). Host-auth; connections stay project-scoped.
+  router.post('/agent/project', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    const body = (req.body ?? {}) as { agent_id?: string; project_id?: string | null };
+    if (!body.agent_id) {
+      next(new ConduitError(ErrorCode.invalidRequest, 'agent_id is required', 400));
+      return;
+    }
+    const agentId = body.agent_id;
+    const projectId = typeof body.project_id === 'string' && body.project_id.trim() ? body.project_id.trim() : null;
+    deps.identityService
+      .setAgentProject(host.id, agentId, projectId)
+      .then(() => {
+        res.json({ agent_id: agentId, project_id: projectId });
       })
       .catch(next);
   });

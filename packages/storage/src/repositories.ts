@@ -13,6 +13,7 @@ import type {
   Host,
   HostState,
   Jwk,
+  Project,
   SecurityEvent,
   Task,
   TaskStatus,
@@ -34,12 +35,18 @@ export interface NewHost {
 
 export interface NewAgent {
   hostId: string;
+  projectId: string | null;
   publicKeyJwk: Jwk | null;
   jwksUrl: string | null;
   name: string | null;
   description: string | null;
   mode: AgentMode;
   status: AgentState;
+}
+
+export interface NewProject {
+  name: string;
+  description: string | null;
 }
 
 export interface NewCapabilityGrant {
@@ -64,6 +71,7 @@ export interface NewTask {
 
 export interface NewConnection {
   name: string;
+  projectId: string | null;
   platform: string;
   /** Already-encrypted (AES-256-GCM) ciphertext — the registry never hands plaintext to storage. */
   credentialEncrypted: Uint8Array;
@@ -125,6 +133,8 @@ export interface AgentRepository {
   /** All agents, newest first (admin/dashboard registry view). */
   list(page: PageQuery): Promise<Page<Agent>>;
   updateStatus(id: string, status: AgentState): Promise<void>;
+  /** Move the agent to a project (or null = global). */
+  setProject(id: string, projectId: string | null): Promise<void>;
   /** Rotate the stored public key (AAP §5.9); the private key never leaves the client. */
   updatePublicKey(id: string, publicKeyJwk: Jwk): Promise<void>;
   /** Update operator-facing metadata (name/description). */
@@ -153,6 +163,14 @@ export interface CapabilityGrantRepository {
   revokeByTask(taskId: string): Promise<void>;
 }
 
+/** Projects — governance boundaries for credential isolation (Conduit extension). */
+export interface ProjectRepository {
+  create(input: NewProject): Promise<Project>;
+  findById(id: string): Promise<Project | null>;
+  list(): Promise<Project[]>;
+  delete(id: string): Promise<void>;
+}
+
 /** Tasks — time-boxed capability-grant bundles (Conduit extension). */
 export interface TaskRepository {
   create(input: NewTask): Promise<Task>;
@@ -167,6 +185,8 @@ export interface ConnectionUpdate {
   allowedOperations?: string[];
   /** New encrypted credential (already AES-256-GCM ciphertext) when rotating the secret. */
   credentialEncrypted?: Uint8Array;
+  /** Move the connection to a project (or null = global). */
+  projectId?: string | null;
 }
 
 /** Connections (admin-registered credentials). */

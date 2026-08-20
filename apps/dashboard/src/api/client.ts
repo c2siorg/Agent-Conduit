@@ -4,6 +4,7 @@ import type { AgentConfiguration } from '@conduit/core';
 export interface AgentSummary {
   id: string;
   host_id: string;
+  project_id: string | null;
   name: string | null;
   description: string | null;
   status: string;
@@ -11,6 +12,14 @@ export interface AgentSummary {
   created_at: string;
   activated_at: string | null;
   session_expires_at: string | null;
+}
+
+/** A governance project (`GET /projects`). */
+export interface Project {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
 }
 
 export interface RegisterResult {
@@ -23,6 +32,7 @@ export interface RegisterResult {
 export interface ConnectionSummary {
   id: string;
   name: string;
+  project_id: string | null;
   platform: string;
   allowed_operations: string[];
   created_at: string;
@@ -37,6 +47,7 @@ export interface RegisterConnectionInput {
   authMethod: string;
   secret: Record<string, string>;
   allowedOperations: string[];
+  projectId?: string | null;
 }
 
 export interface UpdateConnectionInput {
@@ -45,6 +56,8 @@ export interface UpdateConnectionInput {
   authMethod?: string;
   /** Provide to rotate the stored secret; omit to leave it unchanged. */
   secret?: Record<string, string>;
+  /** Move the connection to a project; null = global. */
+  projectId?: string | null;
 }
 
 /** Result of `POST /connections/:id/test`. */
@@ -186,6 +199,7 @@ export interface RegisterAgentInput {
   mode: string;
   name?: string;
   description?: string;
+  projectId?: string | null;
 }
 
 /**
@@ -201,6 +215,8 @@ export interface DashboardApi {
   registerAgent(hostJwt: string, input: RegisterAgentInput): Promise<RegisterResult>;
   revokeAgent(hostJwt: string, agentId: string): Promise<void>;
   updateAgent(hostJwt: string, agentId: string, name: string, description: string): Promise<void>;
+  /** Reassign an agent to a project (or null = global). */
+  setAgentProject(hostJwt: string, agentId: string, projectId: string | null): Promise<void>;
   listConnections(): Promise<ConnectionSummary[]>;
   registerConnection(hostJwt: string, input: RegisterConnectionInput): Promise<{ connection_id: string }>;
   updateConnection(hostJwt: string, id: string, patch: UpdateConnectionInput): Promise<void>;
@@ -209,6 +225,9 @@ export interface DashboardApi {
   listAudit(filter?: AuditFilter): Promise<AuditEntry[]>;
   listTools(): Promise<ToolSummary[]>;
   listConnectors(): Promise<ConnectorInfo[]>;
+  listProjects(): Promise<Project[]>;
+  createProject(hostJwt: string, name: string, description: string): Promise<{ id: string }>;
+  deleteProject(hostJwt: string, id: string): Promise<void>;
   listAgentGrants(agentId: string): Promise<AgentGrant[]>;
   listAgentRisk(): Promise<AgentRisk[]>;
   listAgentConnections(agentId: string): Promise<AgentConnection[]>;
@@ -253,6 +272,7 @@ export function createDashboardApi(baseUrl = '/api'): DashboardApi {
           mode: input.mode,
           name: input.name,
           description: input.description,
+          ...(input.projectId ? { project_id: input.projectId } : {}),
         }),
       });
       const body = (await res.json().catch(() => ({}))) as {
@@ -291,6 +311,18 @@ export function createDashboardApi(baseUrl = '/api'): DashboardApi {
       }
     },
 
+    async setAgentProject(hostJwt, agentId, projectId) {
+      const res = await fetch(`${baseUrl}/agent/project`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${hostJwt}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ agent_id: agentId, project_id: projectId }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `reassign failed (${res.status})`);
+      }
+    },
+
     async listConnections() {
       const res = await fetch(`${baseUrl}/connections`);
       if (!res.ok) {
@@ -310,6 +342,7 @@ export function createDashboardApi(baseUrl = '/api'): DashboardApi {
           auth_method: input.authMethod,
           secret: input.secret,
           allowed_operations: input.allowedOperations,
+          ...(input.projectId ? { project_id: input.projectId } : {}),
         }),
       });
       const body = (await res.json().catch(() => ({}))) as { message?: string; connection_id?: string };
@@ -353,6 +386,7 @@ export function createDashboardApi(baseUrl = '/api'): DashboardApi {
           ...(patch.allowedOperations !== undefined ? { allowed_operations: patch.allowedOperations } : {}),
           ...(patch.authMethod !== undefined ? { auth_method: patch.authMethod } : {}),
           ...(patch.secret !== undefined ? { secret: patch.secret } : {}),
+          ...(patch.projectId !== undefined ? { project_id: patch.projectId } : {}),
         }),
       });
       if (!res.ok) {
@@ -406,6 +440,35 @@ export function createDashboardApi(baseUrl = '/api'): DashboardApi {
         throw new Error(`GET ${baseUrl}/agents/risk -> ${res.status}`);
       }
       return ((await res.json()) as { agents: AgentRisk[] }).agents;
+    },
+
+    async listProjects() {
+      const res = await fetch(`${baseUrl}/projects`);
+      if (!res.ok) {
+        throw new Error(`GET ${baseUrl}/projects -> ${res.status}`);
+      }
+      return ((await res.json()) as { projects: Project[] }).projects;
+    },
+
+    async createProject(hostJwt, name, description) {
+      const res = await fetch(`${baseUrl}/projects`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${hostJwt}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ name, description }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { id?: string; message?: string };
+      if (!res.ok) {
+        throw new Error(body.message ?? `create project failed (${res.status})`);
+      }
+      return { id: body.id ?? '' };
+    },
+
+    async deleteProject(hostJwt, id) {
+      const res = await fetch(`${baseUrl}/projects/${id}`, { method: 'DELETE', headers: { authorization: `Bearer ${hostJwt}` } });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `delete project failed (${res.status})`);
+      }
     },
 
     async listAgentConnections(agentId) {

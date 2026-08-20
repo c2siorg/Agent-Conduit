@@ -57,6 +57,11 @@ const PATHS: Record<string, JSX.Element> = {
       <line x1="7.2" y1="13" x2="16.8" y2="17" />
     </>
   ),
+  projects: (
+    <>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </>
+  ),
   wiring: (
     <>
       <rect x="3" y="9" width="5" height="6" rx="1" />

@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { createDashboardApi } from '../api/client';
+import { useProjects } from '../api/queries';
 import { ed25519Supported, generateAgentKeyPair, parseHostKey, signHostJwt, type Ed25519Jwk } from '../lib/agentCrypto';
 
 const api = createDashboardApi();
@@ -13,9 +14,11 @@ const api = createDashboardApi();
  */
 export function RegisterAgentForm({ hostKey, onClose }: { hostKey: string; onClose: () => void }): JSX.Element {
   const queryClient = useQueryClient();
+  const projects = useProjects().data ?? [];
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [mode, setMode] = useState('delegated');
+  const [project, setProject] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ agentId: string; privateKey: Ed25519Jwk } | null>(null);
@@ -40,6 +43,7 @@ export function RegisterAgentForm({ hostKey, onClose }: { hostKey: string; onClo
         mode,
         name: name.trim(),
         description: description.trim(),
+        projectId: project || null,
       });
       setResult({ agentId: res.agent_id, privateKey: agent.privateKeyJwk });
       await queryClient.invalidateQueries({ queryKey: ['agents'] });
@@ -88,6 +92,17 @@ export function RegisterAgentForm({ hostKey, onClose }: { hostKey: string; onClo
             <select value={mode} onChange={(e) => setMode(e.target.value)}>
               <option value="delegated">delegated</option>
               <option value="autonomous">autonomous</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Project — isolates which connections this agent can reach</span>
+            <select value={project} onChange={(e) => setProject(e.target.value)}>
+              <option value="">Unassigned (global)</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
             </select>
           </label>
           {error && <div className="errorBox">{error}</div>}

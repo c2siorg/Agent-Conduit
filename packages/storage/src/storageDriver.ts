@@ -6,6 +6,7 @@ import type {
   ConnectionRepository,
   HostRepository,
   JtiCacheRepository,
+  ProjectRepository,
   TaskRepository,
   ToolRepository,
 } from './repositories.js';
@@ -35,6 +36,7 @@ export interface StorageDriver {
   // Aggregate repositories.
   readonly hosts: HostRepository;
   readonly agents: AgentRepository;
+  readonly projects: ProjectRepository;
   readonly capabilityGrants: CapabilityGrantRepository;
   readonly tasks: TaskRepository;
   readonly connections: ConnectionRepository;

@@ -5,12 +5,13 @@ import type { Queryable } from './queryable.js';
 import { clampLimit, decodeCursor, encodeCursor } from './rowMappers.js';
 
 const COLS =
-  'id, name, platform, credential_encrypted, allowed_operations, created_at, ' +
+  'id, name, project_id, platform, credential_encrypted, allowed_operations, created_at, ' +
   'last_test_ok, last_test_at, last_test_detail';
 
 type Row = {
   id: string;
   name: string;
+  project_id: string | null;
   platform: string;
   credential_encrypted: Buffer;
   allowed_operations: string[];
@@ -24,6 +25,7 @@ function map(r: Row): Connection {
   return {
     id: r.id,
     name: r.name,
+    projectId: r.project_id,
     platform: r.platform,
     credentialEncrypted: new Uint8Array(r.credential_encrypted),
     allowedOperations: r.allowed_operations,
@@ -39,9 +41,9 @@ export class PostgresConnectionRepository implements ConnectionRepository {
 
   async create(input: NewConnection): Promise<Connection> {
     const { rows } = await this.db().query<Row>(
-      `INSERT INTO connections (name, platform, credential_encrypted, allowed_operations)
-       VALUES ($1, $2, $3, $4::text[]) RETURNING ${COLS}`,
-      [input.name, input.platform, Buffer.from(input.credentialEncrypted), input.allowedOperations],
+      `INSERT INTO connections (name, project_id, platform, credential_encrypted, allowed_operations)
+       VALUES ($1, $2::uuid, $3, $4, $5::text[]) RETURNING ${COLS}`,
+      [input.name, input.projectId, input.platform, Buffer.from(input.credentialEncrypted), input.allowedOperations],
     );
     const row = rows[0];
     if (!row) {
@@ -70,6 +72,10 @@ export class PostgresConnectionRepository implements ConnectionRepository {
     if (patch.credentialEncrypted !== undefined) {
       sets.push(`credential_encrypted = $${i++}`);
       vals.push(Buffer.from(patch.credentialEncrypted));
+    }
+    if (patch.projectId !== undefined) {
+      sets.push(`project_id = $${i++}::uuid`);
+      vals.push(patch.projectId);
     }
     if (sets.length === 0) {
       return this.findById(id);

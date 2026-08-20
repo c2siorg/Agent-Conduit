@@ -1,9 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { createDashboardApi, type AgentSummary } from '../api/client';
-import { useAgentRisk, useAgents } from '../api/queries';
+import { useAgentRisk, useAgents, useProjects } from '../api/queries';
 import type { NavKey } from '../components/AppShell';
 import { EditAgentForm } from '../components/EditAgentForm';
+import { ProjectChip } from '../components/ProjectChip';
 import { OperatorKeyNotice } from '../components/OperatorKeyNotice';
 import { RegisterAgentForm } from '../components/RegisterAgentForm';
 import { StatusPill } from '../components/StatusPill';
@@ -35,6 +36,8 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
   const { data, isLoading, error } = useAgents();
   const riskData = useAgentRisk().data ?? [];
   const riskFor = (id: string) => riskData.find((r) => r.agent_id === id);
+  const projects = useProjects().data ?? [];
+  const [projectFilter, setProjectFilter] = useState('all');
   const queryClient = useQueryClient();
   const { key: hostKey, loaded } = useOperatorKey();
   const [showForm, setShowForm] = useState(false);
@@ -50,6 +53,9 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
   const q = search.trim().toLowerCase();
   const filtered = agents.filter((a) => {
     if (statusFilter !== 'all' && a.status !== statusFilter) {
+      return false;
+    }
+    if (projectFilter === 'global' ? a.project_id !== null : projectFilter !== 'all' && a.project_id !== projectFilter) {
       return false;
     }
     if (!q) {
@@ -134,6 +140,15 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
               <option value="rejected">Rejected</option>
               <option value="claimed">Claimed</option>
             </select>
+            <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+              <option value="all">All projects</option>
+              <option value="global">Global (unassigned)</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
             <span className="toolbarCount">
               {filtered.length} of {agents.length}
             </span>
@@ -143,7 +158,7 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
             <thead>
               <tr>
                 <th>Agent</th>
-                <th>Description</th>
+                <th>Project</th>
                 <th>Status</th>
                 <th>Risk</th>
                 <th>Mode</th>
@@ -158,7 +173,9 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
                     <div className="cellName">{a.name || 'Unnamed agent'}</div>
                     <div className="cellId">{a.id}</div>
                   </td>
-                  <td className="cellDesc">{a.description || '-'}</td>
+                  <td>
+                    <ProjectChip projectId={a.project_id} />
+                  </td>
                   <td>
                     <StatusPill status={a.status} />
                   </td>
