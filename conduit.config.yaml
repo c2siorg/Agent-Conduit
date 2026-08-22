@@ -1,0 +1,101 @@
+# Agent Conduit — default deployment configuration.
+#
+# Resolution is LAYERED, last-wins:
+#   1. built-in defaults (in code)
+#   2. this file (conduit.config.yaml)
+#   3. environment variables (canonical for secrets & containers)
+#
+# Secrets NEVER live in this file. Supply them via env vars / a secret store.
+# Everything swappable lives here — nothing operational is hardcoded.
+
+server:
+  host: 0.0.0.0
+  port: 8443
+  baseUrl: https://localhost:8443 # override: CONDUIT_BASE_URL
+  requestLimits:
+    jsonBodyBytes: 1048576 # 1 MB
+    maxHeaderBytes: 16384
+
+# Persistence is pluggable. Swap backends by changing `driver` + its block — no code changes.
+storage:
+  driver: postgres # postgres | mysql | ...
+  postgres:
+    host: localhost # override: PGHOST
+    port: 5432 # override: PGPORT
+    database: conduit # override: PGDATABASE
+    user: conduit # override: PGUSER
+    poolSize: 10
+    # password via env only: PGPASSWORD
+  # mysql:
+  #   host: localhost
+  #   port: 3306
+  #   database: conduit
+  #   user: conduit
+  #   poolSize: 10
+
+# Key sources — never the key material itself.
+crypto:
+  masterKey:
+    source: env # env | file | kms
+    envVar: CONDUIT_MASTER_KEY # AES-256-GCM, base64, 32 bytes
+  signingKey:
+    source: env # env | file | kms
+    envVar: CONDUIT_SIGNING_KEY
+
+security:
+  jwt:
+    agentTtlSeconds: 60 # short-lived agent JWTs (AAP recommends ~60s)
+    hostTtlSeconds: 300
+    clockSkewSeconds: 30 # reject iat > 30s in the future
+    jtiCacheWindowSeconds: 90 # replay window = lifetime + skew
+  rateLimits:
+    perAgentPerMinute: 120
+    perHostPerMinute: 300
+    perUserPerMinute: 300
+    perIpPerMinute: 600
+    unknownHostRegistrationPerHourPerIp: 5 # aggressive cap (AAP §8.13)
+  dpop:
+    enabled: false # opt-in (RFC 9449)
+  mtls:
+    enabled: false # opt-in (RFC 8705)
+  dashboardAuth:
+    # Password login for the admin dashboard. Auth turns ON automatically once an admin password is set
+    # in the env var below; leave it unset for an open (dev) UI. `enabled: true` forces it on (and the
+    # server refuses to start without a password). The password + session secret NEVER live in this file.
+    enabled: true
+    username: admin # override: CONDUIT_ADMIN_USERNAME
+    passwordEnvVar: CONDUIT_ADMIN_PASSWORD # the admin password (env only)
+    sessionSecretEnvVar: CONDUIT_SESSION_SECRET # HMAC session key (env only; random per-boot if unset)
+    sessionTtlSeconds: 43200 # 12h
+
+tls:
+  source: file # file | acme
+  file:
+    certPath: ./secrets/tls/cert.pem
+    keyPath: ./secrets/tls/key.pem
+  acme:
+    directoryUrl: https://acme-v02.api.letsencrypt.org/directory
+    email: '' # override: ACME_EMAIL
+    domains: []
+  expiryAlertDays: 21 # warn this many days before cert expiry
+
+# Which bundled platform drivers are enabled, plus per-connection defaults.
+connectors:
+  enabled:
+    - slack
+    - discord
+    - github
+    - gitlab
+    - jira
+    - google
+    - notion
+    - rest
+    - graphql
+  defaults: {}
+
+observability:
+  logLevel: info # debug | info | warn | error — override: LOG_LEVEL
+  format: ndjson
+  exporters: [] # e.g. [datadog, loki, cloudwatch]
+  audit:
+    hashArgs: true # store an args HASH, never raw args

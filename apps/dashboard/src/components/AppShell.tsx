@@ -1,14 +1,18 @@
 import type { ReactNode } from 'react';
-import { useHealth } from '../api/queries';
+import { useQueryClient } from '@tanstack/react-query';
+import { createDashboardApi } from '../api/client';
+import { useHealth, useSession } from '../api/queries';
 import { Icon } from './Icon';
+import { OperatorKeyMenu } from './OperatorKeyMenu';
 import { Toaster } from './Toaster';
+
+const api = createDashboardApi();
 
 export type NavKey =
   | 'getStarted'
   | 'dashboard'
   | 'projects'
   | 'agents'
-  | 'topology'
   | 'wiring'
   | 'policy'
   | 'connections'
@@ -23,28 +27,42 @@ interface NavItem {
   icon: string;
 }
 
+// Grouped into a few small, plain-language sections so the structure reads at a glance and a newcomer
+// can map a task to a section (identities, access, insight) instead of scanning one long list of jargon.
 const NAV_GROUPS: ReadonlyArray<{ label: string; items: ReadonlyArray<NavItem> }> = [
   {
-    label: 'Operations',
+    label: 'Start',
     items: [
+      { key: 'getStarted', label: 'Get Started', icon: 'getStarted' },
       { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+    ],
+  },
+  {
+    label: 'Identities',
+    items: [
+      { key: 'agents', label: 'Agents', icon: 'agents' },
       { key: 'projects', label: 'Projects', icon: 'projects' },
-      { key: 'agents', label: 'Agent Management', icon: 'agents' },
-      { key: 'topology', label: 'Topology & Risk', icon: 'topology' },
+    ],
+  },
+  {
+    label: 'Access',
+    items: [
+      { key: 'connections', label: 'Connections', icon: 'connections' },
       { key: 'wiring', label: 'Access Wiring', icon: 'wiring' },
       { key: 'policy', label: 'Execution Policy', icon: 'policy' },
-      { key: 'connections', label: 'Platform Connections', icon: 'connections' },
-      { key: 'tools', label: 'Tool & Schema Router', icon: 'tools' },
+    ],
+  },
+  {
+    label: 'Insight',
+    items: [
+      { key: 'tools', label: 'Tools', icon: 'tools' },
       { key: 'audit', label: 'Audit Logs', icon: 'audit' },
       { key: 'compliance', label: 'Compliance', icon: 'compliance' },
     ],
   },
   {
     label: 'System',
-    items: [
-      { key: 'getStarted', label: 'Get Started', icon: 'getStarted' },
-      { key: 'settings', label: 'Settings', icon: 'settings' },
-    ],
+    items: [{ key: 'settings', label: 'Settings', icon: 'settings' }],
   },
 ];
 
@@ -61,6 +79,14 @@ export function AppShell({ active, onNavigate, children }: AppShellProps): JSX.E
   const health = useHealth();
   const ok = health.data?.ready ?? false;
   const current = ALL_ITEMS.find((n) => n.key === active);
+  const currentGroup = NAV_GROUPS.find((g) => g.items.some((i) => i.key === active));
+  const session = useSession();
+  const queryClient = useQueryClient();
+  const loggedIn = session.data?.required === true && session.data.authenticated === true;
+
+  const logout = (): void => {
+    void api.logout().then(() => queryClient.invalidateQueries());
+  };
 
   return (
     <div className="app">
@@ -101,10 +127,28 @@ export function AppShell({ active, onNavigate, children }: AppShellProps): JSX.E
 
       <div className="main">
         <header className="topbar">
-          <div className="crumb">{current ? current.label : ''}</div>
-          <div className={ok ? 'sys sys-ok' : 'sys sys-bad'}>
-            <span className="dot" />
-            {ok ? 'Operational' : 'Degraded'}
+          <nav className="crumb" aria-label="Breadcrumb">
+            {currentGroup && <span className="crumb-group">{currentGroup.label}</span>}
+            {currentGroup && <span className="crumb-sep">/</span>}
+            <span className="crumb-page">{current ? current.label : ''}</span>
+          </nav>
+          <div className="topbar-right">
+            <OperatorKeyMenu />
+            <div className={ok ? 'sys sys-ok' : 'sys sys-bad'}>
+              <span className="dot" />
+              {ok ? 'Operational' : 'Degraded'}
+            </div>
+            {loggedIn && (
+              <div className="userMenu">
+                <span className="userName">
+                  <Icon name="agents" size={14} />
+                  {session.data?.username}
+                </span>
+                <button type="button" className="linkBtn" onClick={logout}>
+                  Sign out
+                </button>
+              </div>
+            )}
           </div>
         </header>
         <main className="content">{children}</main>

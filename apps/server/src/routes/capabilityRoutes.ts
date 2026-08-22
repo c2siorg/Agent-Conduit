@@ -64,6 +64,27 @@ export function capabilityRoutes(deps: CapabilityRoutesDeps): Router {
       .catch(next);
   });
 
+  // Revoke (deny) a single capability grant — the per-capability kill-switch. Takes effect on the next call.
+  router.post('/agent/grant/revoke', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const host = getAuth(res).host;
+    if (!host) {
+      next(new ConduitError(ErrorCode.unauthorized, 'host not resolved', 401));
+      return;
+    }
+    const body = (req.body ?? {}) as { agent_id?: string; capability?: string };
+    if (!body.agent_id || !body.capability) {
+      next(new ConduitError(ErrorCode.invalidRequest, 'agent_id and capability are required', 400));
+      return;
+    }
+    const capability = body.capability;
+    deps.identityService
+      .revokeGrant(host.id, body.agent_id, capability)
+      .then(() => {
+        res.json({ agent_id: body.agent_id, capability, status: 'denied' });
+      })
+      .catch(next);
+  });
+
   // Task-scoped grants (Conduit extension): create a time-boxed bundle of capabilities that auto-revoke.
   router.post('/agent/task', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
     const host = getAuth(res).host;

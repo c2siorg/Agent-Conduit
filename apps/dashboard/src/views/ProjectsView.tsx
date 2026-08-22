@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { createDashboardApi } from '../api/client';
 import { useAgents, useConnections, useProjects } from '../api/queries';
 import type { NavKey } from '../components/AppShell';
+import { EmptyState } from '../components/EmptyState';
 import { OperatorKeyNotice } from '../components/OperatorKeyNotice';
 import { ProjectChip } from '../components/ProjectChip';
 import { parseHostKey, signHostJwt } from '../lib/agentCrypto';
@@ -116,7 +117,16 @@ export function ProjectsView({ onNavigate }: { onNavigate: (key: NavKey) => void
 
       {isLoading && <p className="muted">Loading projects...</p>}
 
-      {!isLoading && (
+      {!isLoading && projects.length === 0 && globalAgents === 0 && globalConns === 0 && !showForm && (
+        <EmptyState
+          icon="projects"
+          title="No projects yet"
+          text="Projects isolate credentials: a project-scoped connection is only usable by agents in the same project. Create one, then assign agents and connections to it as you register them."
+          action={{ label: 'New project', onClick: () => setShowForm(true) }}
+        />
+      )}
+
+      {!isLoading && (projects.length > 0 || globalAgents > 0 || globalConns > 0) && (
         <table className="registry">
           <thead>
             <tr>
@@ -154,13 +164,6 @@ export function ProjectsView({ onNavigate }: { onNavigate: (key: NavKey) => void
                 <td className="mono">{globalAgents}</td>
                 <td className="mono">{globalConns}</td>
                 <td />
-              </tr>
-            )}
-            {projects.length === 0 && (
-              <tr>
-                <td colSpan={5} className="muted">
-                  No projects yet. Create one, then assign agents + connections to it when you register them.
-                </td>
               </tr>
             )}
           </tbody>

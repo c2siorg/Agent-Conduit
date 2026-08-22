@@ -3,6 +3,7 @@ import type { StorageDriver } from '@conduit/storage';
 import express, { type Express, type Request } from 'express';
 import helmet from 'helmet';
 import type { JwtPipeline } from '../auth/jwtPipeline.js';
+import type { DashboardAuth } from '../auth/dashboard/dashboardAuth.js';
 import type { ConduitConfig } from '../config/configSchema.js';
 import type { ConnectionProxy } from '../connections/connectionProxy.js';
 import type { ConnectionRegistryService } from '../connections/connectionRegistry.js';
@@ -13,6 +14,7 @@ import type { SecurityEventStream } from '../observability/securityEventStream.j
 import type { SchemaCache } from '../router/schemaCache.js';
 import type { TokenRouter } from '../router/tokenRouter.js';
 import { adminRoutes } from '../routes/adminRoutes.js';
+import { authRoutes } from '../routes/authRoutes.js';
 import { capabilityRoutes } from '../routes/capabilityRoutes.js';
 import { identityRoutes } from '../routes/identityRoutes.js';
 import { observabilityRoutes } from '../routes/observabilityRoutes.js';
@@ -48,6 +50,8 @@ export interface GatewayAppDeps {
   connectors?: ConnectorRegistry;
   /** Operator-toggleable runtime security settings; a permissive default is used if omitted. */
   settings?: RuntimeSettingsStore;
+  /** Dashboard password login. When omitted (e.g. tests) the UI + read endpoints stay open. */
+  dashboardAuth?: DashboardAuth;
   tokenRouter: TokenRouter;
   schemaCache: SchemaCache;
   events: SecurityEventStream;
@@ -81,6 +85,39 @@ export function createGatewayApp(deps: GatewayAppDeps): Express {
   const registerLimiter = createRateLimiter(3_600_000, () => settings.get().rateLimit.registerPerHourPerIp);
   app.use(rateLimit(ipLimiter, clientIp, { skip: (req) => skipInfra(req) || !settings.get().rateLimit.enabled }));
   app.use('/agent/register', rateLimit(registerLimiter, clientIp, { skip: () => !settings.get().rateLimit.enabled }));
+
+  // Dashboard password login (optional). The /auth/* routes are always available (they report
+  // required:false when disabled). When enabled, a session gate protects the browser-facing READ
+  // endpoints — the data an unauthenticated visitor could otherwise browse. AAP protocol endpoints
+  // (/.well-known, /agent/*, /host/*, /capability/*, /tools/:name) keep their own JWT auth and are never
+  // gated here; write endpoints keep their host+jwt requirement (which the gate also accepts).
+  if (deps.dashboardAuth) {
+    const auth = deps.dashboardAuth;
+    app.use(authRoutes({ auth }));
+    // Only GET requests on this curated read surface are gated. Note "/agents" (registry list) is gated
+    // while "/agent/*" (protocol) is not, and "/tools" (list) is gated while "/tools/:name" (agent schema
+    // fetch) is not.
+    const gatedReads: readonly RegExp[] = [
+      /^\/agents(\/|$)/,
+      /^\/connections(\/|$)/,
+      /^\/audit$/,
+      /^\/compliance$/,
+      /^\/connectors$/,
+      /^\/metrics$/,
+      /^\/events$/,
+      /^\/projects$/,
+      /^\/tasks$/,
+      /^\/tools$/,
+    ];
+    const sessionGate = auth.requireSession(deps.hostPipeline);
+    app.use((req, res, next) => {
+      if (req.method === 'GET' && gatedReads.some((re) => re.test(req.path))) {
+        sessionGate(req, res, next);
+        return;
+      }
+      next();
+    });
+  }
 
   app.use(wellKnownRoutes({ config: deps.config }));
   app.use(

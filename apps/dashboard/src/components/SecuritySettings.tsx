@@ -62,7 +62,6 @@ export function SecuritySettingsPanel(): JSX.Element {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, key]);
 
   async function save(): Promise<void> {

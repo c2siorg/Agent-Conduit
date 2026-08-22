@@ -1,5 +1,12 @@
 import type { AgentConfiguration } from '@conduit/core';
 
+/** Dashboard login state, from `GET /auth/session`. `required:false` means auth is disabled (open UI). */
+export interface SessionState {
+  required: boolean;
+  authenticated: boolean;
+  username: string | null;
+}
+
 /** One row of the agent registry, as returned by `GET /agents`. */
 export interface AgentSummary {
   id: string;
@@ -90,7 +97,17 @@ export interface AuditFilter {
 export interface ToolSummary {
   name: string;
   adapter_type: string;
+  adapter_config: Record<string, unknown>;
   schema_cached_at: string | null;
+}
+
+export type AdapterType = 'mcp' | 'openapi' | 'cli';
+
+/** Input for registering a tool against an adapter (POST /tools). */
+export interface RegisterToolInput {
+  name: string;
+  adapterType: AdapterType;
+  adapterConfig: Record<string, unknown>;
 }
 
 /** One declarative policy rule. */
@@ -144,12 +161,23 @@ export interface AgentGrant {
   capability: string;
   connection_id: string | null;
   operation: string | null;
+  /** The grant's constraints (arg pins). Present so the UI can display + re-grant with the same scope. */
+  constraints?: Record<string, unknown>;
   task_id: string | null;
   status: string;
   /** Server-computed risk level. */
   risk?: 'low' | 'med' | 'high';
   /** "Broken wire": the agent has connector authorizations but this grant's connection isn't among them. */
   blocked?: boolean;
+}
+
+/** Input for granting a capability to an agent (`POST /agent/grant`). */
+export interface GrantCapabilityInput {
+  agentId: string;
+  capability: string;
+  connectionId: string;
+  operation: string;
+  constraints?: Record<string, unknown>;
 }
 
 /** A connector an agent is authorized to use (`GET /agents/:id/connections`). */
@@ -207,6 +235,12 @@ export interface RegisterAgentInput {
  * Holds no secrets; the host JWT used for registration is signed in the browser, not here.
  */
 export interface DashboardApi {
+  /** Whether login is required and, if so, whether the current session is authenticated. */
+  getSession(): Promise<SessionState>;
+  /** Log in with a username + password; the server sets an httpOnly session cookie. Throws on failure. */
+  login(username: string, password: string): Promise<void>;
+  /** Clear the session cookie. */
+  logout(): Promise<void>;
   listAgents(): Promise<AgentSummary[]>;
   /** The gateway issuer (used as the host JWT `aud`). */
   getIssuer(): Promise<string>;
@@ -224,11 +258,21 @@ export interface DashboardApi {
   testConnection(hostJwt: string, id: string): Promise<CredentialTestResult>;
   listAudit(filter?: AuditFilter): Promise<AuditEntry[]>;
   listTools(): Promise<ToolSummary[]>;
+  /** Register (or update) a tool bound to an adapter. Host-authorized. Re-registering a name updates it. */
+  registerTool(hostJwt: string, input: RegisterToolInput): Promise<void>;
+  /** Delete a registered tool by name. Host-authorized. */
+  deleteTool(hostJwt: string, name: string): Promise<void>;
+  /** Flush the per-tool schema cache (all tools). Host-authorized. */
+  flushToolCache(hostJwt: string): Promise<void>;
   listConnectors(): Promise<ConnectorInfo[]>;
   listProjects(): Promise<Project[]>;
   createProject(hostJwt: string, name: string, description: string): Promise<{ id: string }>;
   deleteProject(hostJwt: string, id: string): Promise<void>;
   listAgentGrants(agentId: string): Promise<AgentGrant[]>;
+  /** Grant (or replace) a capability for an agent, mapped to a connection + operation with constraints. */
+  grantCapability(hostJwt: string, input: GrantCapabilityInput): Promise<void>;
+  /** Revoke (deny) a single capability grant for an agent. Host-authorized. Takes effect on the next call. */
+  revokeGrant(hostJwt: string, agentId: string, capability: string): Promise<void>;
   listAgentRisk(): Promise<AgentRisk[]>;
   listAgentConnections(agentId: string): Promise<AgentConnection[]>;
   attachConnection(hostJwt: string, agentId: string, input: AttachConnectionInput): Promise<void>;
@@ -242,6 +286,33 @@ export interface DashboardApi {
 /** Build a client bound to the gateway base path (defaults to `/api`, proxied to the gateway). */
 export function createDashboardApi(baseUrl = '/api'): DashboardApi {
   return {
+    async getSession() {
+      // Do NOT fail open here: if the gateway is down or running an old build without this route, we must
+      // surface that (the App shows a "cannot reach gateway" screen) rather than silently exposing the UI.
+      const res = await fetch(`${baseUrl}/auth/session`, { credentials: 'same-origin' });
+      if (!res.ok) {
+        throw new Error(`auth/session -> ${res.status}`);
+      }
+      return (await res.json()) as SessionState;
+    },
+
+    async login(username, password) {
+      const res = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `login failed (${res.status})`);
+      }
+    },
+
+    async logout() {
+      await fetch(`${baseUrl}/auth/logout`, { method: 'POST', credentials: 'same-origin' });
+    },
+
     async listAgents() {
       const res = await fetch(`${baseUrl}/agents`);
       if (!res.ok) {
@@ -377,6 +448,47 @@ export function createDashboardApi(baseUrl = '/api'): DashboardApi {
       return ((await res.json()) as { tools: ToolSummary[] }).tools;
     },
 
+    async registerTool(hostJwt, input) {
+      const res = await fetch(`${baseUrl}/tools`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { authorization: `Bearer ${hostJwt}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: input.name,
+          adapter_type: input.adapterType,
+          adapter_config: input.adapterConfig,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `register tool failed (${res.status})`);
+      }
+    },
+
+    async deleteTool(hostJwt, name) {
+      const res = await fetch(`${baseUrl}/tools/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { authorization: `Bearer ${hostJwt}` },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `delete tool failed (${res.status})`);
+      }
+    },
+
+    async flushToolCache(hostJwt) {
+      const res = await fetch(`${baseUrl}/tools/flush`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { authorization: `Bearer ${hostJwt}` },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `flush cache failed (${res.status})`);
+      }
+    },
+
     async updateConnection(hostJwt, id, patch) {
       const res = await fetch(`${baseUrl}/connections/${id}`, {
         method: 'PATCH',
@@ -432,6 +544,38 @@ export function createDashboardApi(baseUrl = '/api'): DashboardApi {
         throw new Error(`GET ${baseUrl}/agents/${agentId}/grants -> ${res.status}`);
       }
       return ((await res.json()) as { grants: AgentGrant[] }).grants;
+    },
+
+    async grantCapability(hostJwt, input) {
+      const res = await fetch(`${baseUrl}/agent/grant`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { authorization: `Bearer ${hostJwt}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          agent_id: input.agentId,
+          capability: input.capability,
+          connection_id: input.connectionId,
+          operation: input.operation,
+          constraints: input.constraints ?? {},
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `grant failed (${res.status})`);
+      }
+    },
+
+    async revokeGrant(hostJwt, agentId, capability) {
+      const res = await fetch(`${baseUrl}/agent/grant/revoke`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { authorization: `Bearer ${hostJwt}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ agent_id: agentId, capability }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? `revoke grant failed (${res.status})`);
+      }
     },
 
     async listAgentRisk() {

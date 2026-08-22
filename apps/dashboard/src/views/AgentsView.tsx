@@ -4,6 +4,7 @@ import { createDashboardApi, type AgentSummary } from '../api/client';
 import { useAgentRisk, useAgents, useProjects } from '../api/queries';
 import type { NavKey } from '../components/AppShell';
 import { EditAgentForm } from '../components/EditAgentForm';
+import { EmptyState } from '../components/EmptyState';
 import { ProjectChip } from '../components/ProjectChip';
 import { OperatorKeyNotice } from '../components/OperatorKeyNotice';
 import { RegisterAgentForm } from '../components/RegisterAgentForm';
@@ -32,7 +33,13 @@ function fmt(iso: string | null): string {
  * and refreshes (cleared on Clear or when the tab closes); it never leaves the browser. Includes a
  * client-side search + status filter.
  */
-export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }): JSX.Element {
+export function AgentsView({
+  onNavigate,
+  onOpenAgent,
+}: {
+  onNavigate: (key: NavKey) => void;
+  onOpenAgent: (id: string) => void;
+}): JSX.Element {
   const { data, isLoading, error } = useAgents();
   const riskData = useAgentRisk().data ?? [];
   const riskFor = (id: string) => riskData.find((r) => r.agent_id === id);
@@ -122,7 +129,16 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
       {isLoading && <p className="muted">Loading registry...</p>}
       {error && <p className="muted">Failed to load agents (is the gateway running?).</p>}
 
-      {!isLoading && !error && (
+      {!isLoading && !error && agents.length === 0 && !showForm && (
+        <EmptyState
+          icon="agents"
+          title="No agents registered yet"
+          text="Agents are per-session identities under your host, each with its own keypair and short-lived JWTs. Register your first one to get started."
+          action={{ label: 'Register your first agent', onClick: () => setShowForm(true) }}
+        />
+      )}
+
+      {!isLoading && !error && agents.length > 0 && (
         <>
           <div className="toolbar">
             <input
@@ -168,7 +184,7 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
             </thead>
             <tbody>
               {filtered.map((a) => (
-                <tr key={a.id}>
+                <tr key={a.id} className="rowClickable" onClick={() => onOpenAgent(a.id)}>
                   <td>
                     <div className="cellName">{a.name || 'Unnamed agent'}</div>
                     <div className="cellId">{a.id}</div>
@@ -194,7 +210,7 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
                   </td>
                   <td className="mono">{a.mode}</td>
                   <td className="mono">{fmt(a.created_at)}</td>
-                  <td>
+                  <td onClick={(e) => e.stopPropagation()}>
                     <div className="rowActions">
                       <button type="button" className="linkBtn" disabled={busyId === a.id} onClick={() => setEditing(a)}>
                         Edit
@@ -214,7 +230,7 @@ export function AgentsView({ onNavigate }: { onNavigate: (key: NavKey) => void }
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={7} className="muted">
-                    {agents.length === 0 ? 'No agents registered yet.' : 'No agents match your filter.'}
+                    No agents match your filter.
                   </td>
                 </tr>
               )}

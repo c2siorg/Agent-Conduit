@@ -102,6 +102,8 @@ export interface IdentityService {
   ): Promise<void>;
   /** Grant (or replace) a capability for an agent owned by `hostId`, mapping it to connection+operation. */
   grantCapability(hostId: string, input: GrantCapabilityInput): Promise<CapabilityGrant>;
+  /** Revoke (deny) an active capability grant for an agent owned by `hostId`. Idempotent-ish: 404 if none. */
+  revokeGrant(hostId: string, agentId: string, capability: string): Promise<void>;
   /**
    * Agent self-service capability request (AAP §5.4). Already-active capabilities are returned as-is
    * (auto-approved); the rest become `pending` grants awaiting operator approval (the operator approves
@@ -255,6 +257,34 @@ export function createIdentityService(deps: IdentityServiceDeps): IdentityServic
         constraints: input.constraints,
         grantedBy: hostId,
         expiresAt: null,
+      });
+    },
+
+    async revokeGrant(hostId, agentId, capability) {
+      const agent = await storage.agents.findById(agentId);
+      if (!agent) {
+        throw new ConduitError(ErrorCode.agentNotFound, 'agent not found', 404);
+      }
+      if (agent.hostId !== hostId) {
+        throw new ConduitError(ErrorCode.unauthorized, 'agent does not belong to this host', 403);
+      }
+      const grant = await storage.capabilityGrants.findActive(agentId, capability);
+      if (!grant) {
+        throw new ConduitError(ErrorCode.capabilityNotFound, `no active grant for capability "${capability}"`, 404);
+      }
+      // Deny takes effect on the next call — the pipeline never caches grant state (revocation is immediate).
+      await storage.capabilityGrants.setStatus(grant.id, 'denied', hostId, 'revoked by operator');
+      await storage.auditLog.append({
+        agentId,
+        hostId,
+        eventType: 'capability.grant_revoked',
+        capability,
+        connectionId: grant.connectionId,
+        operation: grant.operation,
+        taskId: grant.taskId,
+        outcome: 'success',
+        argsHash: null,
+        durationMs: null,
       });
     },
 

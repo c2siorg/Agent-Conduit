@@ -1,7 +1,16 @@
 {
   "name": "conduit-client",
   "version": "0.1.0",
-  "description": "Agent Conduit SDK — the AAP Client: holds the host identity, manages keys, signs JWTs, calls the gateway.",
+  "description": "Agent Conduit SDK — the AAP Client: holds the host identity, manages agent keys, signs short-lived JWTs, and calls the gateway (connect/execute/status/tool schemas).",
+  "keywords": [
+    "conduit",
+    "agent",
+    "aap",
+    "identity",
+    "jwt",
+    "ai-agents",
+    "sdk"
+  ],
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -12,12 +21,33 @@
       "default": "./dist/index.js"
     }
   },
-  "scripts": {
-    "build": "tsc --build",
-    "clean": "tsc --build --clean"
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/conduitClient.d.ts",
+    "dist/types.d.ts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
   },
-  "dependencies": {
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/c2siorg/Agent-Conduit.git",
+    "directory": "packages/sdk"
+  },
+  "scripts": {
+    "build": "tsc --build && node scripts/bundle.mjs",
+    "bundle": "node scripts/bundle.mjs",
+    "clean": "tsc --build --clean",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
     "@conduit/core": "*",
-    "@conduit/crypto": "*"
+    "@conduit/crypto": "*",
+    "esbuild": "^0.28.0"
   }
 }

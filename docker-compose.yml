@@ -42,6 +42,10 @@ services:
       # Credential encryption key (base64-encoded 32 bytes). Override in production; never commit a real key.
       # Generate with: openssl rand -base64 32
       CONDUIT_MASTER_KEY: ${CONDUIT_MASTER_KEY:-Y29uZHVpdC1kZXYtbWFzdGVyLWtleS0zMmJ5dGVzISE=}
+      # Dashboard login (optional). Set CONDUIT_ADMIN_PASSWORD to require login; leave unset for an open UI.
+      # In production also set a stable CONDUIT_SESSION_SECRET so sessions survive restarts.
+      CONDUIT_ADMIN_PASSWORD: ${CONDUIT_ADMIN_PASSWORD:-}
+      CONDUIT_SESSION_SECRET: ${CONDUIT_SESSION_SECRET:-}
       LOG_LEVEL: info
     ports:
       - '8443:8443'
@@ -114,6 +118,27 @@ services:
       CONDUIT_AUD: http://localhost:8443
       EXAMPLE_HEARTBEAT_MS: '15000'
     command: ['node', 'apps/server/dist/scripts/exampleAgent.js']
+
+  # Slack Ops Copilot — a Claude agent you chat with in Slack that acts on GitHub + Slack THROUGH Conduit.
+  # Provision once on the host (writes copilot.json), then pass it in as COPILOT_JSON:
+  #   cd examples/slack-ops-copilot && npm install && npm run setup   (see its README)
+  #   COPILOT_JSON="$(cat examples/slack-ops-copilot/copilot.json)" \
+  #   SLACK_APP_TOKEN=xapp-... SLACK_BOT_TOKEN=xoxb-... ANTHROPIC_API_KEY=sk-ant-... \
+  #   docker compose --profile copilot up -d copilot
+  copilot:
+    profiles: [copilot]
+    build:
+      context: ./examples/slack-ops-copilot
+    depends_on:
+      conduit:
+        condition: service_healthy
+    environment:
+      CONDUIT_URL: http://conduit:8443
+      COPILOT_JSON: ${COPILOT_JSON:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      COPILOT_MODEL: ${COPILOT_MODEL:-claude-opus-4-8}
 
 volumes:
   pgdata: {}

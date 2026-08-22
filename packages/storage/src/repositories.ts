@@ -18,6 +18,7 @@ import type {
   Task,
   TaskStatus,
   Tool,
+  User,
 } from '@conduit/core';
 import type { Page, PageQuery } from './pagination.js';
 
@@ -47,6 +48,12 @@ export interface NewAgent {
 export interface NewProject {
   name: string;
   description: string | null;
+}
+
+export interface NewUser {
+  username: string;
+  /** Already scrypt-hashed by the caller — the repository never sees or hashes a plaintext password. */
+  passwordHash: string;
 }
 
 export interface NewCapabilityGrant {
@@ -163,6 +170,14 @@ export interface CapabilityGrantRepository {
   revokeByTask(taskId: string): Promise<void>;
 }
 
+/** Dashboard operator accounts (Conduit extension — gate the admin UI). Passwords stored hashed only. */
+export interface UserRepository {
+  create(input: NewUser): Promise<User>;
+  findByUsername(username: string): Promise<User | null>;
+  /** Rotate the stored password hash (e.g. when the configured admin password changes). */
+  updatePasswordHash(id: string, passwordHash: string): Promise<void>;
+}
+
 /** Projects — governance boundaries for credential isolation (Conduit extension). */
 export interface ProjectRepository {
   create(input: NewProject): Promise<Project>;
@@ -221,6 +236,8 @@ export interface ToolRepository {
   findByName(name: string): Promise<Tool | null>;
   list(page: PageQuery): Promise<Page<Tool>>;
   cacheSchema(name: string, schema: Tool['schemaCache'], cachedAt: Date): Promise<void>;
+  /** Remove a tool by name. Returns true if a row was deleted. */
+  delete(name: string): Promise<boolean>;
 }
 
 /** Audit log + security event stream sink. */

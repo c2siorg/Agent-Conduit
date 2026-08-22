@@ -9,6 +9,7 @@ import {
 import { useConnections, useConnectors, useProjects } from '../api/queries';
 import type { NavKey } from '../components/AppShell';
 import { ConnectorAvatar, ConnectorPicker } from '../components/ConnectorPicker';
+import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { ProjectChip } from '../components/ProjectChip';
 import { OperatorKeyNotice } from '../components/OperatorKeyNotice';
@@ -539,7 +540,16 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
       {isLoading && <p className="muted">Loading vault...</p>}
       {error && <p className="muted">Failed to load connections (is the gateway running?).</p>}
 
-      {!isLoading && !error && (
+      {!isLoading && !error && conns.length === 0 && step === 'closed' && (
+        <EmptyState
+          icon="connections"
+          title="No connections yet"
+          text="A connection is a governed platform credential (Slack, GitHub, a REST API, ...). It is encrypted at rest and injected server-side — agents never see the secret. Add one to start wiring access."
+          action={{ label: 'Add your first connection', onClick: () => setStep('pick') }}
+        />
+      )}
+
+      {!isLoading && !error && conns.length > 0 && (
         <table className="registry">
           <thead>
             <tr>
@@ -611,13 +621,6 @@ export function ConnectionsView({ onNavigate }: { onNavigate: (key: NavKey) => v
                 </tr>
               );
             })}
-            {conns.length === 0 && (
-              <tr>
-                <td colSpan={7} className="muted">
-                  No connections registered yet.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       )}

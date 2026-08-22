@@ -9,6 +9,7 @@ import type {
   ProjectRepository,
   TaskRepository,
   ToolRepository,
+  UserRepository,
 } from './repositories.js';
 
 /**
@@ -37,6 +38,7 @@ export interface StorageDriver {
   readonly hosts: HostRepository;
   readonly agents: AgentRepository;
   readonly projects: ProjectRepository;
+  readonly users: UserRepository;
   readonly capabilityGrants: CapabilityGrantRepository;
   readonly tasks: TaskRepository;
   readonly connections: ConnectionRepository;

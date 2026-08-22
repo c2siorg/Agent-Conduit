@@ -2,8 +2,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { createDashboardApi, type AgentConnection } from '../api/client';
 import { useAgentConnections, useAgents, useConnections, useConnectors } from '../api/queries';
+import { AgentPicker } from '../components/AgentPicker';
 import type { NavKey } from '../components/AppShell';
 import { ConnectorAvatar } from '../components/ConnectorPicker';
+import { EmptyState } from '../components/EmptyState';
 import { OperatorKeyNotice } from '../components/OperatorKeyNotice';
 import { parseHostKey, signHostJwt } from '../lib/agentCrypto';
 import { pushToast } from '../lib/toast';
@@ -37,15 +39,25 @@ export function WiringView({ onNavigate }: { onNavigate: (key: NavKey) => void }
   const attached = useAgentConnections(agentId).data ?? [];
   const attachedIds = new Set(attached.map((c) => c.connection_id));
   const available = connections.filter((c) => !attachedIds.has(c.id));
-  const opsFor = (platform: string) => connectors.find((c) => c.platform === platform)?.operations ?? [];
+  // The operations a connector-restriction may choose from = the CONNECTION's own allow-list if it has one
+  // (the server validates against exactly this), otherwise the driver's concrete operations. Offering the
+  // full driver set would let "Restrict" request an operation the connection forbids -> 400.
+  const opsFor = (connectionId: string, platform: string): Array<{ name: string; description: string }> => {
+    const driverOps = connectors.find((k) => k.platform === platform)?.operations ?? [];
+    const connAllow = connections.find((c) => c.id === connectionId)?.allowed_operations ?? [];
+    if (connAllow.length > 0) {
+      return connAllow.map((name) => driverOps.find((o) => o.name === name) ?? { name, description: '' });
+    }
+    return driverOps;
+  };
   const nameOf = (id: string) => connections.find((c) => c.id === id)?.name ?? id.slice(0, 8);
 
   async function hostJwt(): Promise<string> {
     return signHostJwt(parseHostKey(key), await api.getIssuer());
   }
   async function refresh(): Promise<void> {
-    await queryClient.invalidateQueries({ queryKey: ['agentConnections', agentId] });
-    await queryClient.invalidateQueries({ queryKey: ['agentGrants', agentId] });
+    // refetch (not just invalidate) so the attached list + palette update immediately after a change.
+    await queryClient.refetchQueries({ queryKey: ['agentConnections', agentId] });
   }
 
   async function attach(connectionId: string, patch: { allowedOperations?: string[]; rateLimit?: number | null } | undefined, successMsg: string): Promise<void> {
@@ -87,17 +99,18 @@ export function WiringView({ onNavigate }: { onNavigate: (key: NavKey) => void }
           <h1>Agent Access Wiring</h1>
           <p className="page-sub">Drag a connector onto the agent — or press Enter / tap Authorize — to grant it access.</p>
         </div>
-        <select value={agentId} onChange={(e) => setAgentId(e.target.value)} aria-label="Select agent">
-          {agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name || a.id}
-            </option>
-          ))}
-        </select>
+        <AgentPicker agents={agents} value={agentId} onChange={setAgentId} />
       </div>
 
       {!loaded && <OperatorKeyNotice onNavigate={onNavigate} />}
-      {agents.length === 0 && <p className="muted">No agents registered.</p>}
+      {agents.length === 0 && (
+        <EmptyState
+          icon="agents"
+          title="No agents to wire yet"
+          text="Access wiring authorizes connectors for an agent. Register an agent first, then come back to grant it access."
+          action={{ label: 'Register an agent', onClick: () => onNavigate('agents') }}
+        />
+      )}
 
       {agent && (
         <div
@@ -151,9 +164,11 @@ export function WiringView({ onNavigate }: { onNavigate: (key: NavKey) => void }
                 key={c.connection_id}
                 conn={c}
                 busy={busy}
-                operations={opsFor(c.platform)}
-                onOps={(ops) => attach(c.connection_id, { allowedOperations: ops }, ops.length ? 'Operations restricted' : 'All operations allowed')}
-                onRate={(r) => attach(c.connection_id, { rateLimit: r }, r === null ? 'Rate limit removed' : `Rate limit set to ${r}/min`)}
+                operations={opsFor(c.connection_id, c.platform)}
+                // Pass BOTH fields every time — the grant upsert replaces both columns, so we preserve the
+                // one that isn't changing (otherwise editing ops would wipe the rate limit and vice-versa).
+                onOps={(ops) => attach(c.connection_id, { allowedOperations: ops, rateLimit: c.rate_limit }, ops.length ? 'Operations restricted' : 'All operations allowed')}
+                onRate={(r) => attach(c.connection_id, { allowedOperations: c.allowed_operations, rateLimit: r }, r === null ? 'Rate limit removed' : `Rate limit set to ${r}/min`)}
                 onDetach={() => detach(c.connection_id)}
               />
             ))}

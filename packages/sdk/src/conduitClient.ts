@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createJwtSigner, generateEd25519KeyPair, jwkThumbprint } from '@conduit/crypto';
-import type { CanonicalSchema, GrantStatus, Jwk } from '@conduit/core';
+import type { CanonicalSchema, GrantStatus, Jwk } from './types.js';
 
 /** Client construction options. The host PRIVATE key stays in the client and is never transmitted. */
 export interface ConduitClientOptions {

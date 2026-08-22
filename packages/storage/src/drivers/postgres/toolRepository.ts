@@ -70,4 +70,9 @@ export class PostgresToolRepository implements ToolRepository {
       [name, schema ? JSON.stringify(schema) : null, cachedAt],
     );
   }
+
+  async delete(name: string): Promise<boolean> {
+    const { rowCount } = await this.db().query(`DELETE FROM tools WHERE name = $1`, [name]);
+    return (rowCount ?? 0) > 0;
+  }
 }

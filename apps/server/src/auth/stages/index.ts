@@ -30,7 +30,7 @@ export function buildAgentPipeline(deps: PipelineDeps): JwtPipeline {
     new TypCheckStage(),
     new SignatureVerifyStage(deps.verifier, deps.storage, deps.jwksResolver),
     new ClaimValidationStage(deps.storage, deps.config),
-    new StateCheckStage(deps.storage),
+    new StateCheckStage(deps.storage, deps.config.sessionTtlSeconds),
     new CapabilityConstraintStage(deps.constraintEngine, deps.storage),
   ]);
 }

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { AuditEntry } from '../api/client';
-import { useAudit } from '../api/queries';
+import { useAgents, useAudit } from '../api/queries';
+import { AgentPicker } from '../components/AgentPicker';
+import { EmptyState } from '../components/EmptyState';
 import { StatusPill } from '../components/StatusPill';
 
 function fmt(iso: string): string {
@@ -35,6 +37,7 @@ function toCsv(rows: AuditEntry[]): string {
 export function AuditView(): JSX.Element {
   const [agentId, setAgentId] = useState('');
   const [outcome, setOutcome] = useState('all');
+  const agents = useAgents().data ?? [];
 
   const filter = useMemo(
     () => ({
@@ -71,12 +74,7 @@ export function AuditView(): JSX.Element {
       </div>
 
       <div className="toolbar">
-        <input
-          type="search"
-          placeholder="Filter by agent id"
-          value={agentId}
-          onChange={(e) => setAgentId(e.target.value)}
-        />
+        <AgentPicker agents={agents} value={agentId} onChange={setAgentId} allAgentsLabel="All agents" />
         <select value={outcome} onChange={(e) => setOutcome(e.target.value)}>
           <option value="all">All outcomes</option>
           <option value="success">Success</option>
@@ -89,7 +87,19 @@ export function AuditView(): JSX.Element {
       {isLoading && <p className="muted">Loading audit stream...</p>}
       {error && <p className="muted">Failed to load audit log (is the gateway running?).</p>}
 
-      {!isLoading && !error && (
+      {!isLoading && !error && entries.length === 0 && (
+        <EmptyState
+          icon="audit"
+          title="No audit events yet"
+          text={
+            agentId || outcome !== 'all'
+              ? 'No events match the current filter. Try clearing the agent or outcome filter.'
+              : 'Every capability execution and denial is recorded here (arguments are stored only as a hash). Once your agents start making calls, the stream fills in.'
+          }
+        />
+      )}
+
+      {!isLoading && !error && entries.length > 0 && (
         <table className="registry">
           <thead>
             <tr>
@@ -119,13 +129,6 @@ export function AuditView(): JSX.Element {
                 <td className="mono cellId">{e.args_hash ? `${e.args_hash.slice(0, 12)}...` : '-'}</td>
               </tr>
             ))}
-            {entries.length === 0 && (
-              <tr>
-                <td colSpan={7} className="muted">
-                  No audit events recorded yet.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       )}
