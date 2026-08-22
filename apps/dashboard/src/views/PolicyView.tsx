@@ -36,8 +36,11 @@ export function PolicyView({ onNavigate }: { onNavigate: (key: NavKey) => void }
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
-  // New-rule form.
+  // Add / edit rule form. `editingId` is null when adding, or the id of the rule being edited (replaced
+  // in place, preserving its position).
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [nid, setNid] = useState('');
+  const [ndesc, setNdesc] = useState('');
   const [neffect, setNeffect] = useState<PolicyRule['effect']>('deny');
   const [ncaps, setNcaps] = useState('');
   const [nplatforms, setNplatforms] = useState('');
@@ -66,7 +69,6 @@ export function PolicyView({ onNavigate }: { onNavigate: (key: NavKey) => void }
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, key]);
 
   async function persist(policy: SecuritySettings['policy']): Promise<void> {
@@ -85,13 +87,49 @@ export function PolicyView({ onNavigate }: { onNavigate: (key: NavKey) => void }
     }
   }
 
-  function addRule(): void {
+  function resetForm(): void {
+    setEditingId(null);
+    setNid('');
+    setNdesc('');
+    setNeffect('deny');
+    setNcaps('');
+    setNplatforms('');
+    setNops('');
+    setNmodes('');
+    setNrisk('');
+    setError(null);
+  }
+
+  function startEdit(r: PolicyRule): void {
+    setEditingId(r.id);
+    setNid(r.id);
+    setNdesc(r.description ?? '');
+    setNeffect(r.effect);
+    setNcaps((r.capabilities ?? []).join(', '));
+    setNplatforms((r.platforms ?? []).join(', '));
+    setNops((r.operations ?? []).join(', '));
+    setNmodes((r.agentModes ?? []).join(', '));
+    setNrisk(r.minRisk ?? '');
+    setError(null);
+    if (typeof window !== 'undefined') window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  }
+
+  function saveRule(): void {
     if (!settings) return;
     if (!nid.trim()) {
       setError('Rule id is required.');
       return;
     }
-    const rule: PolicyRule = { id: nid.trim(), effect: neffect };
+    const id = nid.trim();
+    const rules = settings.policy.rules;
+    // Adding: reject a duplicate id. Editing: allow keeping the same id, reject collision with a *different* rule.
+    const clash = rules.some((r) => r.id === id && r.id !== editingId);
+    if (clash) {
+      setError(`A rule with id "${id}" already exists.`);
+      return;
+    }
+    const rule: PolicyRule = { id, effect: neffect };
+    if (ndesc.trim()) rule.description = ndesc.trim();
     const caps = csv(ncaps);
     if (caps) rule.capabilities = caps;
     const plats = csv(nplatforms);
@@ -101,18 +139,27 @@ export function PolicyView({ onNavigate }: { onNavigate: (key: NavKey) => void }
     const modes = csv(nmodes);
     if (modes) rule.agentModes = modes;
     if (nrisk === 'low' || nrisk === 'med' || nrisk === 'high') rule.minRisk = nrisk;
-    void persist({ ...settings.policy, rules: [...settings.policy.rules, rule] });
-    setNid('');
-    setNcaps('');
-    setNplatforms('');
-    setNops('');
-    setNmodes('');
-    setNrisk('');
+
+    const next = editingId
+      ? rules.map((r) => (r.id === editingId ? rule : r)) // replace in place (keeps position)
+      : [...rules, rule];
+    void persist({ ...settings.policy, rules: next }).then(() => resetForm());
   }
 
   function removeRule(id: string): void {
     if (!settings) return;
+    if (editingId === id) resetForm();
     void persist({ ...settings.policy, rules: settings.policy.rules.filter((r) => r.id !== id) });
+  }
+
+  /** Reorder a rule (order matters — first match wins). */
+  function moveRule(index: number, dir: -1 | 1): void {
+    if (!settings) return;
+    const rules = [...settings.policy.rules];
+    const target = index + dir;
+    if (target < 0 || target >= rules.length) return;
+    [rules[index], rules[target]] = [rules[target]!, rules[index]!];
+    void persist({ ...settings.policy, rules });
   }
 
   const p = settings?.policy;
@@ -165,7 +212,7 @@ export function PolicyView({ onNavigate }: { onNavigate: (key: NavKey) => void }
               </thead>
               <tbody>
                 {p.rules.map((r, i) => (
-                  <tr key={r.id}>
+                  <tr key={r.id} className={editingId === r.id ? 'rowEditing' : undefined}>
                     <td className="mono">{i + 1}</td>
                     <td className="cellName">{r.id}</td>
                     <td className="cellDesc mono">{ruleSummary(r)}</td>
@@ -175,9 +222,20 @@ export function PolicyView({ onNavigate }: { onNavigate: (key: NavKey) => void }
                       </span>
                     </td>
                     <td>
-                      <button type="button" className="linkBtn danger" disabled={busy} onClick={() => removeRule(r.id)}>
-                        Remove
-                      </button>
+                      <div className="rowActions">
+                        <button type="button" className="linkBtn" disabled={busy || i === 0} title="Move up" onClick={() => moveRule(i, -1)}>
+                          ↑
+                        </button>
+                        <button type="button" className="linkBtn" disabled={busy || i === p.rules.length - 1} title="Move down" onClick={() => moveRule(i, 1)}>
+                          ↓
+                        </button>
+                        <button type="button" className="linkBtn" disabled={busy} onClick={() => startEdit(r)}>
+                          Edit
+                        </button>
+                        <button type="button" className="linkBtn danger" disabled={busy} onClick={() => removeRule(r.id)}>
+                          Remove
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -193,12 +251,12 @@ export function PolicyView({ onNavigate }: { onNavigate: (key: NavKey) => void }
           </div>
 
           <div className="card card-pad">
-            <h2 className="cardTitle">Add rule</h2>
+            <h2 className="cardTitle">{editingId ? `Edit rule "${editingId}"` : 'Add rule'}</h2>
             <p className="muted">Leave a match field blank to match anything. Comma-separate multiple values; use * for wildcard.</p>
             <div className="ruleForm">
               <label className="field">
-                <span>Rule id</span>
-                <input type="text" value={nid} onChange={(e) => setNid(e.target.value)} placeholder="gate-high-risk" />
+                <span>Rule id{editingId && ' (fixed)'}</span>
+                <input type="text" value={nid} disabled={Boolean(editingId)} onChange={(e) => setNid(e.target.value)} placeholder="gate-high-risk" />
               </label>
               <label className="field">
                 <span>Effect</span>
@@ -220,6 +278,10 @@ export function PolicyView({ onNavigate }: { onNavigate: (key: NavKey) => void }
                 </select>
               </label>
               <label className="field">
+                <span>Description (optional)</span>
+                <input type="text" value={ndesc} onChange={(e) => setNdesc(e.target.value)} placeholder="what this rule does" />
+              </label>
+              <label className="field">
                 <span>Capabilities</span>
                 <input type="text" value={ncaps} onChange={(e) => setNcaps(e.target.value)} placeholder="e.g. delete_repo, *" />
               </label>
@@ -236,9 +298,16 @@ export function PolicyView({ onNavigate }: { onNavigate: (key: NavKey) => void }
                 <input type="text" value={nmodes} onChange={(e) => setNmodes(e.target.value)} placeholder="e.g. autonomous" />
               </label>
             </div>
-            <button type="button" className="primaryBtn" disabled={busy} onClick={addRule}>
-              {busy ? 'Saving...' : 'Add rule'}
-            </button>
+            <div className="rowActions">
+              <button type="button" className="primaryBtn" disabled={busy} onClick={saveRule}>
+                {busy ? 'Saving...' : editingId ? 'Save changes' : 'Add rule'}
+              </button>
+              {editingId && (
+                <button type="button" className="linkBtn" disabled={busy} onClick={resetForm}>
+                  Cancel
+                </button>
+              )}
+            </div>
           </div>
         </>
       )}

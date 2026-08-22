@@ -3,3 +3,4 @@
  * Single-provider by design; provider-discovery + Directory tools are intentionally out of scope for v1.
  */
 export * from './conduitClient.js';
+export * from './types.js';

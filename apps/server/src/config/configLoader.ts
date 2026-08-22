@@ -43,6 +43,12 @@ function defaults(): ConduitConfig {
       },
       dpop: { enabled: false },
       mtls: { enabled: false },
+      dashboardAuth: {
+        username: 'admin',
+        passwordEnvVar: 'CONDUIT_ADMIN_PASSWORD',
+        sessionSecretEnvVar: 'CONDUIT_SESSION_SECRET',
+        sessionTtlSeconds: 43_200, // 12h
+      },
     },
     tls: {
       source: 'file',
@@ -114,6 +120,21 @@ export function loadConfig(options?: LoadConfigOptions): ConduitConfig {
   const lvl = env['LOG_LEVEL'];
   if (lvl && (LOG_LEVELS as readonly string[]).includes(lvl)) {
     config.observability.logLevel = lvl as LogLevel;
+  }
+  // Dashboard login: username may be overridden by env; the password + session secret are read from env
+  // at startup by name (never copied into config), keeping secrets out of the resolved object.
+  if (env['CONDUIT_ADMIN_USERNAME']) {
+    config.security.dashboardAuth.username = env['CONDUIT_ADMIN_USERNAME'];
+  }
+  if (env['CONDUIT_DASHBOARD_AUTH'] === 'true' || env['CONDUIT_DASHBOARD_AUTH'] === 'false') {
+    config.security.dashboardAuth.enabled = env['CONDUIT_DASHBOARD_AUTH'] === 'true';
+  }
+  // Fail fast if login is forced on but no password is configured — otherwise no one could ever log in.
+  const dashAuth = config.security.dashboardAuth;
+  if (dashAuth.enabled === true && !env[dashAuth.passwordEnvVar]?.trim()) {
+    throw new Error(
+      `config: security.dashboardAuth is enabled but no admin password is set in env ${dashAuth.passwordEnvVar}`,
+    );
   }
 
   validate(config);

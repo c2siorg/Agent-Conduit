@@ -74,6 +74,24 @@ export interface AgentLifetimesConfig {
   absoluteLifetimeSeconds: number;
 }
 
+/**
+ * Password login that gates the admin dashboard (Conduit extension, not part of AAP).
+ * The password itself is NEVER in this config or the YAML — it comes from an env var and is stored
+ * only as a scrypt hash. Auth turns on automatically once a password is configured (see `enabled`).
+ */
+export interface DashboardAuthConfig {
+  /** Force on/off. When omitted, auth is enabled iff an admin password is configured. */
+  enabled?: boolean;
+  /** The single admin account's username (default 'admin'). */
+  username: string;
+  /** Env var holding the admin password (checked at startup; seeds/updates the admin user). */
+  passwordEnvVar: string;
+  /** Env var holding the HMAC session-signing secret. If unset, a random per-boot secret is used. */
+  sessionSecretEnvVar: string;
+  /** Login session lifetime in seconds. */
+  sessionTtlSeconds: number;
+}
+
 export interface SecurityConfig {
   jwt: JwtSecurityConfig;
   rateLimits: RateLimitConfig;
@@ -82,6 +100,8 @@ export interface SecurityConfig {
   dpop: { enabled: boolean };
   /** RFC 8705 — off by default. */
   mtls: { enabled: boolean; caBundlePath?: string };
+  /** Dashboard password login — off unless a password is configured. */
+  dashboardAuth: DashboardAuthConfig;
 }
 
 export type TlsSource = 'file' | 'acme';

@@ -6,4 +6,10 @@ export interface PipelineConfig {
   clockSkewSeconds: number;
   /** jti replay-cache retention = JWT lifetime + skew. */
   jtiCacheWindowSeconds: number;
+  /**
+   * If set, the agent's session clock is slid forward by this many seconds on each successful authenticated
+   * request (AAP session TTL). Keeps an actively-used agent alive; an idle agent still expires. Omit to
+   * disable the slide-forward (e.g. in unit tests).
+   */
+  sessionTtlSeconds?: number;
 }

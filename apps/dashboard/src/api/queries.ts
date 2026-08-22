@@ -8,10 +8,16 @@ import {
   type ConnectionSummary,
   type ConnectorInfo,
   type MetricsSnapshot,
+  type SessionState,
   type ToolSummary,
 } from './client';
 
 const api = createDashboardApi();
+
+/** Dashboard login state — drives the login gate. */
+export function useSession(): UseQueryResult<SessionState> {
+  return useQuery({ queryKey: ['session'], queryFn: () => api.getSession(), staleTime: 30000 });
+}
 
 /** The gateway's AAP discovery document (§5.1) - the effective, server-side configuration. */
 export function useConfiguration(): UseQueryResult<AgentConfiguration> {

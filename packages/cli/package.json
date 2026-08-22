@@ -1,20 +1,46 @@
 {
   "name": "@conduit/cli",
   "version": "0.1.0",
-  "private": true,
-  "description": "Conduit admin CLI — register connections, manage agents/hosts, run migrations, inspect audit logs.",
+  "description": "Agent Conduit CLI — run agents under a transparent identity proxy (`conduit run`), manage hosts/agents/connections/tools, and inspect audit logs.",
+  "keywords": [
+    "conduit",
+    "agent",
+    "aap",
+    "identity",
+    "jwt",
+    "mcp",
+    "ai-agents",
+    "cli"
+  ],
+  "license": "MIT",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "bin": {
-    "conduit": "./dist/index.js"
+    "conduit": "./bin/conduit.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/c2siorg/Agent-Conduit.git",
+    "directory": "packages/cli"
   },
   "scripts": {
-    "build": "tsc --build",
-    "clean": "tsc --build --clean"
+    "build": "tsc --build && node scripts/bundle.mjs",
+    "bundle": "node scripts/bundle.mjs",
+    "clean": "tsc --build --clean",
+    "prepublishOnly": "npm run build"
   },
-  "dependencies": {
+  "devDependencies": {
     "@conduit/core": "*",
-    "@conduit/crypto": "*"
+    "@conduit/crypto": "*",
+    "esbuild": "^0.28.0"
   }
 }

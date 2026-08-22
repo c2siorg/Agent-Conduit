@@ -79,6 +79,7 @@ export const BUNDLED_MANIFESTS: ConnectorManifest[] = [
       create_issue: { description: 'Open an issue.', method: 'POST', path: '/repos/{owner}/{repo}/issues' },
       add_comment: { description: 'Comment on an issue/PR.', method: 'POST', path: '/repos/{owner}/{repo}/issues/{issue_number}/comments' },
       create_pull_request: { description: 'Open a pull request.', method: 'POST', path: '/repos/{owner}/{repo}/pulls' },
+      list_issues: { description: 'List repository issues (read-only).', method: 'GET', path: '/repos/{owner}/{repo}/issues' },
     },
     test: { description: 'Validate the token (current user).', method: 'GET', path: '/user' },
   },

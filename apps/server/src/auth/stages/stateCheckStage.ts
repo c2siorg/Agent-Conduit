@@ -11,9 +11,13 @@ import type { JwtPipelineStage } from '../jwtPipeline.js';
 export class StateCheckStage implements JwtPipelineStage {
   readonly name = 'stateCheck';
 
-  constructor(private readonly storage: StorageDriver) {}
+  constructor(
+    private readonly storage: StorageDriver,
+    /** When set, slide the agent session clock forward by this many seconds on each valid request. */
+    private readonly sessionTtlSeconds?: number,
+  ) {}
 
-  execute(ctx: AuthContext): Promise<void> {
+  async execute(ctx: AuthContext): Promise<void> {
     const host = ctx.host;
     if (!host) {
       throw new ConduitError(ErrorCode.hostNotFound, 'host not resolved', 401);
@@ -29,7 +33,7 @@ export class StateCheckStage implements JwtPipelineStage {
     }
 
     if (ctx.expectedTyp === 'host+jwt') {
-      return Promise.resolve(); // host pipeline ends at the state check
+      return; // host pipeline ends at the state check
     }
 
     const agent = ctx.agent;
@@ -63,6 +67,12 @@ export class StateCheckStage implements JwtPipelineStage {
     if (agent.sessionExpiresAt && now > agent.sessionExpiresAt.getTime()) {
       throw new ConduitError(ErrorCode.agentExpired, 'session expired', 403);
     }
-    return Promise.resolve();
+
+    // Slide the session clock forward on each valid request so an actively-used agent stays alive (the
+    // session TTL bounds INACTIVITY, not total lifetime — the max/absolute clocks above are never extended).
+    // Runs only after every check passes, so a revoked/expired agent is never kept alive.
+    if (this.sessionTtlSeconds && agent.sessionExpiresAt) {
+      await this.storage.agents.touchSession(agent.id, new Date(now + this.sessionTtlSeconds * 1000));
+    }
   }
 }

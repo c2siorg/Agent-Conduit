@@ -299,6 +299,9 @@ export function adminRoutes(deps: AdminRoutesDeps): Router {
               capability: g.capability,
               connection_id: g.connectionId,
               operation: g.operation,
+              // Constraints are NOT secret — return them so the UI can display them and re-grant a revoked
+              // capability with its exact scope preserved (repo pin, channel allow-list, ...).
+              constraints: g.constraints,
               task_id: g.taskId,
               status: g.status,
               risk: riskLevel(g.operation, g.capability),

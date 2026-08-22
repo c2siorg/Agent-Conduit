@@ -10,6 +10,7 @@ build/
 out/
 *.tsbuildinfo
 apps/dashboard/dist/
+packages/cli/bin/
 
 # Vite / dashboard caches
 .vite/

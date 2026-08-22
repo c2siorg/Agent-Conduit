@@ -13,6 +13,7 @@ import type {
   ProjectRepository,
   TaskRepository,
   ToolRepository,
+  UserRepository,
 } from '../../repositories.js';
 import type { StorageDriver } from '../../storageDriver.js';
 import { PostgresAgentRepository } from './agentRepository.js';
@@ -23,6 +24,7 @@ import { PostgresConnectionRepository } from './connectionRepository.js';
 import { PostgresHostRepository } from './hostRepository.js';
 import { PostgresJtiCacheRepository } from './jtiCacheRepository.js';
 import { PostgresProjectRepository } from './projectRepository.js';
+import { PostgresUserRepository } from './userRepository.js';
 import { PostgresTaskRepository } from './taskRepository.js';
 import { PostgresToolRepository } from './toolRepository.js';
 import type { Queryable } from './queryable.js';
@@ -79,6 +81,7 @@ export class PostgresStorageDriver implements StorageDriver {
   readonly hosts: HostRepository;
   readonly agents: AgentRepository;
   readonly projects: ProjectRepository;
+  readonly users: UserRepository;
   readonly capabilityGrants: CapabilityGrantRepository;
   readonly tasks: TaskRepository;
   readonly connections: ConnectionRepository;
@@ -101,6 +104,7 @@ export class PostgresStorageDriver implements StorageDriver {
     this.hosts = new PostgresHostRepository(db);
     this.agents = new PostgresAgentRepository(db);
     this.projects = new PostgresProjectRepository(db);
+    this.users = new PostgresUserRepository(db);
     this.jtiCache = new PostgresJtiCacheRepository(db);
     this.capabilityGrants = new PostgresCapabilityGrantRepository(db);
     this.tasks = new PostgresTaskRepository(db);

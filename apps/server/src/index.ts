@@ -4,6 +4,7 @@ import { createConnectorRegistry } from '@conduit/connectors';
 import { createJwtVerifier } from '@conduit/crypto';
 import { PostgresStorageDriver, type PostgresConfig } from '@conduit/storage';
 import { createJwksResolver } from './auth/jwksResolver.js';
+import { createDashboardAuth, resolveSessionSecret } from './auth/dashboard/dashboardAuth.js';
 import { buildAgentPipeline, buildHostPipeline } from './auth/stages/index.js';
 import { loadConfig } from './config/configLoader.js';
 import { createConnectionProxy } from './connections/connectionProxy.js';
@@ -104,6 +105,8 @@ async function main(): Promise<void> {
     issuer: config.server.baseUrl,
     clockSkewSeconds: config.security.jwt.clockSkewSeconds,
     jtiCacheWindowSeconds: config.security.jwt.jtiCacheWindowSeconds,
+    // Slide the agent session clock forward per request so an actively-used agent doesn't expire mid-use.
+    sessionTtlSeconds: config.security.lifetimes.sessionTtlSeconds,
   };
   // SSRF-hardened JWKS resolver (§8.12); the allow-private toggle is read live from runtime settings.
   const jwksResolver = createJwksResolver({
@@ -112,6 +115,24 @@ async function main(): Promise<void> {
   const pipelineParts = { verifier, storage, constraintEngine, config: pipelineConfig, jwksResolver };
   const agentPipeline = buildAgentPipeline(pipelineParts);
   const hostPipeline = buildHostPipeline(pipelineParts);
+
+  // Dashboard password login (Conduit extension). Auth turns on when an admin password is configured
+  // (or forced via config); the admin user is seeded/synced from env at startup. Off => UI stays open.
+  const dashCfg = config.security.dashboardAuth;
+  const adminPassword = process.env[dashCfg.passwordEnvVar];
+  const dashboardAuthEnabled = dashCfg.enabled ?? Boolean(adminPassword?.trim());
+  const dashboardAuth = createDashboardAuth({
+    storage,
+    logger,
+    enabled: dashboardAuthEnabled,
+    username: dashCfg.username,
+    password: adminPassword,
+    sessionSecret: resolveSessionSecret(process.env[dashCfg.sessionSecretEnvVar], logger),
+    sessionTtlSeconds: dashCfg.sessionTtlSeconds,
+    secureCookies: config.server.baseUrl.startsWith('https:'),
+  });
+  await dashboardAuth.seedAdminUser();
+  logger.info('dashboard auth', { enabled: dashboardAuthEnabled, username: dashCfg.username });
 
   const app = createGatewayApp({
     config,
@@ -122,6 +143,7 @@ async function main(): Promise<void> {
     connectionProxy,
     connectors,
     settings,
+    dashboardAuth,
     tokenRouter,
     schemaCache,
     events,

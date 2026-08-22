@@ -65,9 +65,11 @@ function requireOpt(ctx: Ctx, name: string): string {
 }
 
 function loadHostKey(ctx: Ctx): Jwk & { d: string } {
-  const source = opt(ctx, 'host-key') ?? process.env['CONDUIT_HOST_KEY'];
+  // Precedence: --host-key flag, then CONDUIT_HOST_KEY (inline JSON or a path), then CONDUIT_HOST_KEY_FILE.
+  const source =
+    opt(ctx, 'host-key') ?? process.env['CONDUIT_HOST_KEY'] ?? process.env['CONDUIT_HOST_KEY_FILE'];
   if (!source) {
-    fail('--host-key <file> (or CONDUIT_HOST_KEY) is required for this command');
+    fail('--host-key <file> (or CONDUIT_HOST_KEY / CONDUIT_HOST_KEY_FILE) is required for this command');
   }
   let raw: string;
   try {
@@ -76,7 +78,13 @@ function loadHostKey(ctx: Ctx): Jwk & { d: string } {
     // Allow the value itself to be the JWK JSON, not only a file path.
     raw = source;
   }
-  const parsed = JSON.parse(raw) as { hostPrivateKeyJwk?: unknown } & Record<string, unknown>;
+  // Tolerate leading log noise (e.g. `bootstrap:host` output) by extracting the JSON object.
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) {
+    fail('host key: could not find a JSON object (expected a JWK or the bootstrap:host output)');
+  }
+  const parsed = JSON.parse(raw.slice(start, end + 1)) as { hostPrivateKeyJwk?: unknown } & Record<string, unknown>;
   const key = (parsed.hostPrivateKeyJwk ?? parsed) as Jwk & { d?: string };
   if (key.kty !== 'OKP' || !key.x || !key.d) {
     fail('host key must be an Ed25519 PRIVATE JWK (with "d")');
@@ -388,7 +396,7 @@ Commands:
   audit [--agent <id>] [--outcome <o>]
   metrics
 
-Global options: --url <baseUrl> (env CONDUIT_URL), --host-key <file> (env CONDUIT_HOST_KEY)`;
+Global options: --url <baseUrl> (env CONDUIT_URL), --host-key <file> (env CONDUIT_HOST_KEY or CONDUIT_HOST_KEY_FILE)`;
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({

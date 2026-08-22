@@ -13,9 +13,12 @@ export function OperatorKeyNotice({ onNavigate }: { onNavigate: (key: NavKey) =>
       </span>
       <div className="noticeBody">
         <strong>No operator host key set.</strong>
-        <span className="muted"> Set it in Settings to register, edit, or revoke agents and connections.</span>
+        <span className="muted">
+          {' '}
+          Use <b>Set operator key</b> in the top bar to register, edit, or revoke — or set it in Settings.
+        </span>
       </div>
-      <button type="button" className="primaryBtn" onClick={() => onNavigate('settings')}>
+      <button type="button" className="linkBtn" onClick={() => onNavigate('settings')}>
         Open Settings
       </button>
     </div>

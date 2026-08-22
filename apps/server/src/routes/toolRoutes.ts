@@ -63,6 +63,9 @@ export function toolRoutes(deps: ToolRoutesDeps): Router {
           tools: page.items.map((t) => ({
             name: t.name,
             adapter_type: t.adapterType,
+            // Adapter config is NOT a secret (credentials live encrypted in connections); return it so the
+            // admin UI can prefill the edit form. Schemas themselves are still never listed here.
+            adapter_config: t.adapterConfig,
             schema_cached_at: t.schemaCachedAt,
           })),
           has_more: page.hasMore,
@@ -74,6 +77,24 @@ export function toolRoutes(deps: ToolRoutesDeps): Router {
   router.post('/tools/flush', requireJwt(deps.hostPipeline, 'host+jwt'), (_req, res) => {
     deps.cache.flush();
     res.json({ flushed: true });
+  });
+
+  router.delete('/tools/:name', requireJwt(deps.hostPipeline, 'host+jwt'), (req, res, next) => {
+    const name = req.params['name'];
+    if (!name) {
+      next(new ConduitError(ErrorCode.invalidRequest, 'tool name is required', 400));
+      return;
+    }
+    deps.storage.tools
+      .delete(name)
+      .then((deleted) => {
+        if (!deleted) {
+          throw new ConduitError(ErrorCode.invalidRequest, 'tool not found', 404);
+        }
+        deps.cache.invalidate(name); // drop any cached schema for the removed tool
+        res.json({ name, deleted: true });
+      })
+      .catch(next);
   });
 
   router.get('/tools/:name', (req, res, next) => {
